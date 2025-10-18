@@ -1,0 +1,489 @@
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+// ✅ CORRECTION: Changed 'saveToken' to the available export 'saveAccessToken'
+// We only need saveAccessToken for the access token we receive, as refresh is saved directly in sessionStorage.
+import BASE_URL, { saveAccessToken } from '../api/baseURL'; 
+import sidebarImage from '../assets/images/sidebar.png';
+
+function LoginPage() {
+const [formData, setFormData] = useState({
+email: '',
+password: ''
+});
+
+const [message, setMessage] = useState('');
+const [isLoading, setIsLoading] = useState(false);
+const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+
+// Real-time responsiveness setup
+useEffect(() => {
+const handleResize = () => setWindowWidth(window.innerWidth);
+window.addEventListener('resize', handleResize);
+return () => window.removeEventListener('resize', handleResize);
+}, []);
+
+const isMobile = windowWidth <= 768;
+
+const handleChange = (e) => {
+setFormData({ ...formData, [e.target.name]: e.target.value });
+};
+
+const handleLogin = async (e) => {
+e.preventDefault();
+setIsLoading(true);
+try {
+const res = await axios.post(`${BASE_URL}/accounts/login/`, formData);
+const { access, refresh } = res.data;
+
+// ✅ Save tokens in sessionStorage
+sessionStorage.setItem('accessToken', access);
+sessionStorage.setItem('refreshToken', refresh);
+// ✅ CORRECTION: Use the imported function 'saveAccessToken'
+saveAccessToken(access); 
+
+setMessage('Login successful! Redirecting...');
+setTimeout(() => {
+window.location.href = '/dashboard';
+}, 1500);
+} catch (err) {
+setMessage('Login failed. Please check your credentials.');
+} finally {
+setIsLoading(false);
+}
+};
+
+// --- COLOR CONSTANTS (Same as Register) ---
+const PURPLE_PRIMARY = '#8B5CF6';
+const PURPLE_DARK = '#7C3AED';
+const PURPLE_LIGHT = '#A78BFA';
+const DARK_BG = '#0F0F23';
+const FORM_CARD_BG = '#1A1B2F';
+const INPUT_BG = '#252641';
+const INPUT_BG_FILLED = '#2D2E52';
+const TEXT_LIGHT = '#F8FAFC';
+const TEXT_GRAY = '#94A3B8';
+const TEXT_DARK_GRAY = '#64748B';
+
+// --- ENHANCED STYLES (Register Page Style) ---
+const styles = {
+// 1. Container
+container: {
+minHeight: '100vh',
+width: '100vw',
+background: DARK_BG,
+display: 'flex',
+alignItems: 'center',
+justifyContent: 'center',
+padding: isMobile ? '0' : '1rem',
+overflow: 'hidden',
+fontFamily: "'Inter', 'Segoe UI', 'Arial', sans-serif",
+position: 'relative'
+},
+
+// 2. Main Card
+mainCard: {
+display: 'flex',
+width: isMobile ? '100%' : '95%',
+maxWidth: '1200px',
+height: isMobile ? '100vh' : '90vh',
+maxHeight: '800px',
+background: FORM_CARD_BG,
+borderRadius: isMobile ? '0' : '20px',
+overflow: 'hidden',
+boxShadow: isMobile ? 'none' : '0 25px 60px rgba(0, 0, 0, 0.6)',
+animation: 'slideUp 0.6s ease-out',
+flexDirection: isMobile ? 'column-reverse' : 'row', // Reverse for mobile to put form first
+border: isMobile ? 'none' : '1px solid #2D3748',
+},
+
+// 3. Left Panel - FORM SECTION (Swapped position)
+leftPanel: {
+flex: 1,
+display: 'flex',
+alignItems: 'center',
+justifyContent: 'center',
+padding: isMobile ? '2rem 1.5rem' : '3rem 2.5rem',
+background: FORM_CARD_BG,
+overflowY: isMobile ? 'auto' : 'hidden',
+},
+formContainer: {
+width: '100%',
+maxWidth: '420px',
+animation: 'fadeIn 0.6s ease-out',
+},
+title: {
+fontSize: isMobile ? '1.8rem' : '2.1rem',
+fontWeight: '800',
+color: TEXT_LIGHT,
+marginBottom: '0.5rem',
+textAlign: 'left',
+background: isMobile ? 'none' : 'linear-gradient(135deg, #FFFFFF 0%, #E2E8F0 100%)',
+WebkitBackgroundClip: isMobile ? 'none' : 'text',
+WebkitTextFillColor: isMobile ? TEXT_LIGHT : 'transparent',
+backgroundClip: isMobile ? 'none' : 'text',
+},
+loginLink: {
+color: TEXT_GRAY,
+fontSize: '0.95rem',
+marginBottom: '2.5rem',
+textAlign: 'left',
+fontWeight: '400',
+},
+link: {
+color: PURPLE_LIGHT,
+textDecoration: 'none',
+fontWeight: '600',
+transition: 'all 0.2s ease',
+borderBottom: '1px solid transparent',
+},
+form: {
+display: 'flex',
+flexDirection: 'column',
+gap: '1.3rem',
+},
+formGroup: {
+display: 'flex',
+flexDirection: 'column',
+gap: '0.6rem',
+},
+label: {
+color: TEXT_LIGHT,
+fontSize: '0.9rem',
+fontWeight: '600',
+textAlign: 'left',
+letterSpacing: '0.3px',
+},
+// 4. Enhanced Input Fields
+input: {
+padding: '1rem 1.2rem',
+borderRadius: '12px',
+fontSize: '0.95rem',
+transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+outline: 'none',
+fontFamily: 'inherit',
+backgroundColor: INPUT_BG,
+color: TEXT_LIGHT,
+border: `2px solid ${INPUT_BG}`,
+width: '100%',
+boxSizing: 'border-box',
+fontWeight: '400',
+},
+inputFocused: {
+backgroundColor: INPUT_BG_FILLED,
+border: `2px solid ${PURPLE_PRIMARY}`,
+boxShadow: `0 0 0 4px ${PURPLE_PRIMARY}20`,
+transform: 'translateY(-1px)',
+},
+
+// 5. Enhanced Button Styles
+registerBtn: {
+background: `linear-gradient(135deg, ${PURPLE_PRIMARY} 0%, ${PURPLE_DARK} 100%)`,
+color: 'white',
+border: 'none',
+padding: '1.2rem 2rem',
+borderRadius: '12px',
+fontSize: '1rem',
+fontWeight: '700',
+cursor: 'pointer',
+transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+marginTop: '0.5rem',
+width: '100%',
+letterSpacing: '0.5px',
+position: 'relative',
+overflow: 'hidden',
+},
+btnLoading: {
+opacity: 0.8,
+cursor: 'not-allowed',
+transform: 'none !important',
+},
+
+// 6. Enhanced Message Styles
+successMsg: {
+color: '#10B981',
+fontSize: '0.9rem',
+padding: '1rem',
+borderRadius: '8px',
+backgroundColor: '#10B98120',
+textAlign: 'center',
+border: '1px solid #10B98140',
+fontWeight: '500',
+},
+errorMsg: {
+color: '#EF4444',
+fontSize: '0.9rem',
+padding: '1rem',
+borderRadius: '8px',
+backgroundColor: '#EF444420',
+textAlign: 'center',
+border: '1px solid #EF444440',
+fontWeight: '500',
+},
+
+// 7. Right Panel - IMAGE SECTION (Swapped position)
+rightPanel: {
+flex: isMobile ? '0 0 180px' : 1.3,
+background: DARK_BG,
+display: 'flex',
+alignItems: 'center',
+justifyContent: 'center',
+position: 'relative',
+overflow: 'hidden',
+flexDirection: isMobile ? 'row' : 'column',
+padding: isMobile ? '1rem' : '0',
+},
+sidebarImg: {
+width: isMobile ? '100%' : '100%',
+height: isMobile ? '100%' : '100%',
+objectFit: 'cover',
+display: 'block',
+filter: 'brightness(0.9)',
+},
+rightContent: {
+position: isMobile ? 'relative' : 'absolute',
+bottom: isMobile ? 'auto' : '80px',
+left: isMobile ? 'auto' : '50px',
+right: isMobile ? 'auto' : '50px',
+textAlign: isMobile ? 'center' : 'left',
+color: 'white',
+zIndex: 3,
+padding: isMobile ? '1rem' : '0',
+width: isMobile ? '100%' : 'auto',
+},
+companyName: {
+fontSize: isMobile ? '1.5rem' : '2.8rem',
+fontWeight: '900',
+color: 'white',
+marginBottom: isMobile ? '0.5rem' : '1.5rem',
+textShadow: '0 4px 15px rgba(0, 0, 0, 0.7)',
+background: 'linear-gradient(135deg, #FFFFFF 0%, #E2E8F0 100%)',
+WebkitBackgroundClip: 'text',
+WebkitTextFillColor: 'transparent',
+backgroundClip: 'text',
+},
+rightTitle: {
+fontSize: isMobile ? '1.1rem' : '2.4rem',
+fontWeight: '800',
+lineHeight: 1.1,
+marginBottom: isMobile ? '0.5rem' : '1rem',
+textShadow: '0 2px 10px rgba(0, 0, 0, 0.5)',
+display: isMobile ? 'none' : 'block',
+},
+rightSubtitle: {
+fontSize: isMobile ? '0.8rem' : '1.1rem',
+opacity: 0.95,
+lineHeight: '1.6',
+textShadow: '0 1px 5px rgba(0, 0, 0, 0.5)',
+fontWeight: '400',
+display: isMobile ? 'none' : 'block',
+},
+
+// 8. Mobile Header - ONLY ON MOBILE
+mobileHeader: {
+display: isMobile ? 'flex' : 'none',
+background: `linear-gradient(135deg, ${PURPLE_PRIMARY} 0%, ${PURPLE_DARK} 100%)`,
+padding: '1.5rem',
+alignItems: 'center',
+justifyContent: 'center',
+borderBottom: '1px solid #2D3748',
+},
+mobileCompanyName: {
+fontSize: '1.8rem',
+fontWeight: '800',
+color: 'white',
+textAlign: 'center',
+textShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+},
+
+// 9. Footer Link
+footer: {
+textAlign: 'center',
+marginTop: '2rem',
+paddingTop: '2rem',
+borderTop: `1px solid ${TEXT_DARK_GRAY}30`,
+color: TEXT_GRAY,
+fontSize: '0.9rem',
+},
+};
+// State for focus tracking
+const [focusedField, setFocusedField] = useState(null);
+
+const handleFocus = (name) => setFocusedField(name);
+const handleBlur = () => setFocusedField(null);
+
+return (
+<div style={styles.container}>
+{/* CSS Animations */}
+<style>
+{`
+@keyframes slideUp {
+from { opacity: 0; transform: translateY(30px) scale(0.98); }
+to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes fadeIn {
+from { opacity: 0; transform: translateX(20px); }
+to { opacity: 1; transform: translateX(0); }
+}
+@keyframes buttonShine {
+0% { transform: translateX(-100%) rotate(45deg); }
+100% { transform: translateX(200%) rotate(45deg); }
+}
+body {
+margin: 0;
+padding: 0;
+background: ${DARK_BG};
+overflow: ${isMobile ? 'auto' : 'hidden'};
+}
+.btn-shine:hover::before {
+content: '';
+position: absolute;
+top: 0;
+left: -100%;
+width: 50%;
+height: 100%;
+background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+animation: buttonShine 0.8s ease;
+}
+`}
+</style>
+
+<div style={styles.mainCard}>
+{/* Mobile Header - ONLY ON MOBILE */}
+<div style={styles.mobileHeader}>
+<div style={styles.mobileCompanyName}>Investment Accounting</div>
+</div>
+
+{/* Left Panel - FORM SECTION (Now on left for desktop) */}
+<div style={styles.leftPanel}>
+<div style={styles.formContainer}>
+<h1 style={styles.title}>Welcome Back</h1>
+<p style={styles.loginLink}>
+Don't have an account?{' '}
+<a
+href="/register"
+style={styles.link}
+onMouseEnter={(e) => {
+e.target.style.color = '#C4B5FD';
+e.target.style.borderBottomColor = '#C4B5FD';
+}}
+onMouseLeave={(e) => {
+e.target.style.color = PURPLE_LIGHT;
+e.target.style.borderBottomColor = 'transparent';
+}}
+>
+Create Account
+</a>
+</p>
+
+<form onSubmit={handleLogin} style={styles.form}>
+{/* Email Field */}
+<div style={styles.formGroup}>
+<label style={styles.label}>Email Address</label>
+<input
+type="email"
+name="email"
+value={formData.email}
+onChange={handleChange}
+style={{
+...styles.input,
+...(focusedField === 'email' && styles.inputFocused)
+}}
+placeholder="you@example.com"
+required
+onFocus={() => handleFocus('email')}
+onBlur={handleBlur}
+/>
+</div>
+
+{/* Password Field */}
+<div style={styles.formGroup}>
+<label style={styles.label}>Password</label>
+<input
+type="password"
+name="password"
+value={formData.password}
+onChange={handleChange}
+style={{
+...styles.input,
+...(focusedField === 'password' && styles.inputFocused)
+}}
+placeholder="Enter your password"
+required
+onFocus={() => handleFocus('password')}
+onBlur={handleBlur}
+/>
+</div>
+
+{/* Messages */}
+{message && (
+<div style={message.includes('successful') ? styles.successMsg : styles.errorMsg}>
+{message}
+</div>
+)}
+
+{/* Submit Button */}
+<button
+type="submit"
+style={{
+...styles.registerBtn,
+...(isLoading && styles.btnLoading)
+}}
+disabled={isLoading}
+className="btn-shine"
+onMouseEnter={(e) => !isLoading && (e.target.style.transform = 'translateY(-3px)')}
+onMouseLeave={(e) => !isLoading && (e.target.style.transform = 'translateY(0)')}
+>
+{isLoading ? (
+<>
+<span style={{ opacity: 0.9 }}>Signing In...</span>
+</>
+) : (
+<>
+<span>Sign In</span>
+</>
+)}
+</button>
+</form>
+
+{/* Footer */}
+<div style={styles.footer}>
+<a
+href="/forgot-password"
+style={styles.link}
+onMouseEnter={(e) => {
+e.target.style.color = '#C4B5FD';
+e.target.style.borderBottomColor = '#C4B5FD';
+}}
+onMouseLeave={(e) => {
+e.target.style.color = PURPLE_LIGHT;
+e.target.style.borderBottomColor = 'transparent';
+}}
+>
+Forgot Password?
+</a>
+</div>
+</div>
+</div>
+{/* Right Panel - IMAGE SECTION (Now on right for desktop) */}
+<div style={styles.rightPanel}>
+<img
+src={sidebarImage}
+alt="Investment Platform"
+style={styles.sidebarImg}
+/>
+<div style={styles.rightContent}>
+{/* Company Name - Show on both mobile and desktop */}
+<div style={styles.companyName}>Investment Accounting</div>
+{/* Title and Subtitle - Show only on desktop */}
+<h2 style={styles.rightTitle}>Continue Your Journey</h2>
+<p style={styles.rightSubtitle}>
+Access your investment portfolio and continue growing your wealth with our secure platform.
+</p>
+</div>
+</div>
+</div>
+</div>
+);
+}
+
+export default LoginPage;
