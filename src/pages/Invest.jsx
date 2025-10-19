@@ -1,98 +1,196 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+// Assuming the correct path to baseURL.js is this
+import BASE_URL, { removeTokens } from '../api/baseURL'; 
 
-// We explicitly accept userData from the parent component (Dashboard)
-// to ensure the username is dynamic.
+// --- Confirmation Modal Component ---
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, plan, message }) => {
+    // --- COLOR CONSTANTS (Local copy for Modal styling) ---
+    const PURPLE_PRIMARY = '#8B5CF6'; 
+    const DARK_BG = '#0F0F23';      
+    const FORM_CARD_BG = '#1A1B2F';  
+    const TEXT_LIGHT = '#F8FAFC';    
+    const TEXT_GRAY = '#94A3B8';
+    const SUCCESS_GREEN = '#10B981';
+    const ERROR_RED = '#EF4444';
+    const WARNING_AMBER = '#F59E0B';
+
+    if (!isOpen) return null;
+
+    // Determine content based on the presence of a 'message'
+    const isConfirmation = !message;
+    const isSuccess = message && (message.toLowerCase().includes('successfully') || message.toLowerCase().includes('activated'));
+    const isError = message && (message.toLowerCase().includes('error') || message.toLowerCase().includes('insufficient') || message.toLowerCase().includes('active plan'));
+    const statusIcon = isSuccess ? '✅' : isError ? '❌' : '❓';
+    const statusColor = isSuccess ? SUCCESS_GREEN : isError ? ERROR_RED : PURPLE_PRIMARY;
+    
+    let statusTitle = "Confirm Investment";
+    if (message) {
+        statusTitle = isSuccess ? "Success!" : "Action Failed";
+    }
+
+    const modalStyles = {
+        overlay: {
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            zIndex: 2000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            animation: 'fadeIn 0.3s ease-out'
+        },
+        modal: {
+            background: FORM_CARD_BG,
+            borderRadius: '20px',
+            padding: '25px',
+            width: '90%',
+            maxWidth: '400px',
+            boxShadow: `0 10px 40px ${PURPLE_PRIMARY}50`,
+            textAlign: 'center',
+            position: 'relative',
+            animation: 'popIn 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55)'
+        },
+        title: {
+            fontSize: '1.5rem',
+            fontWeight: '700',
+            color: TEXT_LIGHT,
+            marginBottom: '15px'
+        },
+        icon: {
+            fontSize: '3rem',
+            marginBottom: '15px',
+            color: statusColor,
+            transition: 'transform 0.3s ease-out'
+        },
+        planDetail: {
+            background: DARK_BG,
+            borderRadius: '12px',
+            padding: '15px',
+            marginBottom: '20px',
+            border: `1px solid ${PURPLE_PRIMARY}30`
+        },
+        detailText: {
+            fontSize: '1rem',
+            color: TEXT_LIGHT,
+            marginBottom: '5px'
+        },
+        highlight: {
+            fontWeight: '700',
+            color: PURPLE_PRIMARY
+        },
+        messageText: {
+            fontSize: '1.1rem',
+            color: statusColor,
+            marginBottom: '20px',
+            fontWeight: '500',
+            whiteSpace: 'pre-wrap'
+        },
+        buttonContainer: {
+            display: 'flex',
+            gap: '10px',
+            justifyContent: isConfirmation ? 'space-between' : 'center'
+        },
+        button: (bgColor, hoverColor) => ({
+            flex: 1,
+            background: bgColor,
+            color: TEXT_LIGHT,
+            border: 'none',
+            padding: '12px 20px',
+            borderRadius: '10px',
+            fontSize: '1rem',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            minWidth: '120px'
+        }),
+        closeButton: {
+            background: FORM_CARD_BG,
+            border: `1px solid ${TEXT_GRAY}50`,
+            color: TEXT_GRAY
+        }
+    };
+
+    // CSS Animations for Modal
+    const modalStyleTag = `
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes popIn {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+    `;
+
+    return (
+        <div style={modalStyles.overlay}>
+            <style>{modalStyleTag}</style>
+            <div style={modalStyles.modal}>
+                <div style={modalStyles.icon}>{statusIcon}</div>
+                <div style={modalStyles.title}>{statusTitle}</div>
+
+                {isConfirmation ? (
+                    <>
+                        <p style={{...modalStyles.messageText, color: TEXT_LIGHT}}>Are you sure you want to invest **₨{parseFloat(plan.investment).toLocaleString()}** in the **{plan.title}** plan?</p>
+                        <div style={modalStyles.planDetail}>
+                            <div style={modalStyles.detailText}>Daily Profit: <span style={modalStyles.highlight}>₨{parseFloat(plan.dailyProfit).toLocaleString()}</span></div>
+                            <div style={modalStyles.detailText}>Duration: <span style={modalStyles.highlight}>{plan.duration}</span></div>
+                            <div style={modalStyles.detailText}>Total Return: <span style={modalStyles.highlight}>₨{parseFloat(plan.totalProfit).toLocaleString()}</span></div>
+                        </div>
+                        <div style={modalStyles.buttonContainer}>
+                            <button
+                                style={modalStyles.button(PURPLE_PRIMARY)}
+                                onClick={onConfirm}
+                            >
+                                Invest Now
+                            </button>
+                            <button
+                                style={{ ...modalStyles.button(FORM_CARD_BG), ...modalStyles.closeButton }}
+                                onClick={onClose}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <p style={modalStyles.messageText}>{message}</p>
+                        <div style={modalStyles.buttonContainer}>
+                            <button
+                                style={modalStyles.button(isSuccess ? SUCCESS_GREEN : PURPLE_PRIMARY)}
+                                onClick={onClose}
+                            >
+                                {isSuccess ? 'Great!' : 'Close'}
+                            </button>
+                        </div>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+// --- END Confirmation Modal Component ---
+
+
 function InvestmentPage({ userData }) { 
   const navigate = useNavigate();
-  // We don't need to use useState for userData if it's passed via props, 
-  // but we'll keep the destructuring simple.
-  const [activeTab, setActiveTab] = useState('invest');
-  const [selectedPlan, setSelectedPlan] = useState(null);
+
+  // --- STATES ---
+  const [plans, setPlans] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMessage, setModalMessage] = useState(null);
+  const [selectedPlanForInvestment, setSelectedPlanForInvestment] = useState(null);
+  const [activeTab] = useState('invest');
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-
-  // Set authLoading to false and handle immediate token check, 
-  // relying on the parent for data passing.
-  const authLoading = false; 
-
-  // Real-time responsiveness and token check cleanup
-  useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener('resize', handleResize);
-    
-    // Auth Check: Redirect if token is missing (Assuming Dashboard route enforced this)
-    const token = sessionStorage.getItem('accessToken');
-    if (!token) {
-      navigate('/login');
-    }
-    
-    return () => window.removeEventListener('resize', handleResize);
-  }, [navigate]); // Only dependent on navigate
-
   const isMobile = windowWidth <= 768;
+  const [hoveredPlan, setHoveredPlan] = useState(null);
 
-  // Investment Plans Data (Kept the same)
-  const investmentPlans = [
-    {
-      id: 1,
-      name: "10 Marla",
-      investment: 3000,
-      dailyProfit: 50,
-      monthlyProfit: 1500,
-      annualProfit: 18250,
-      duration: "Lifetime",
-      features: ["Daily Profit", "24/7 Support", "Secure Investment", "Flexible Withdrawal"],
-      color: "#8B5CF6",
-      icon: "🏡"
-    },
-    {
-      id: 2,
-      name: "20 Marla", 
-      investment: 5000,
-      dailyProfit: 100,
-      monthlyProfit: 3000,
-      annualProfit: 36500,
-      duration: "Lifetime",
-      features: ["Higher Returns", "Priority Support", "Secure Investment", "Flexible Withdrawal"],
-      color: "#06b6d4",
-      icon: "🏘️"
-    },
-    {
-      id: 3,
-      name: "1 Kanal",
-      investment: 8000,
-      dailyProfit: 150,
-      monthlyProfit: 4500,
-      annualProfit: 54750,
-      duration: "Lifetime",
-      features: ["Premium Returns", "VIP Support", "Secure Investment", "Instant Withdrawal"],
-      color: "#10b981", 
-      icon: "🏢"
-    },
-    {
-      id: 4,
-      name: "10 Kanal",
-      investment: 10000,
-      dailyProfit: 200,
-      monthlyProfit: 6000,
-      annualProfit: 73000,
-      duration: "Lifetime",
-      features: ["Maximum Returns", "Dedicated Manager", "Secure Investment", "Instant Withdrawal"],
-      color: "#f59e0b",
-      icon: "🏰"
-    }
-  ];
-
-  const handleLogout = () => {
-    sessionStorage.removeItem('accessToken');
-    sessionStorage.removeItem('refreshToken');
-    navigate('/login');
-  };
-
-  const handleInvestNow = (plan) => {
-    setSelectedPlan(plan);
-    console.log('Selected plan:', plan);
-  };
 
   // --- COLOR CONSTANTS ---
   const PURPLE_PRIMARY = '#8B5CF6'; 
@@ -106,7 +204,8 @@ function InvestmentPage({ userData }) {
   const SUCCESS_GREEN = '#10B981';
   const WARNING_AMBER = '#F59E0B';
 
-  // --- STYLES (All styles definitions are the same) ---
+
+  // --- STYLES (Consolidated and complete styles for correct rendering) ---
   const styles = {
     container: {
       minHeight: '100vh',
@@ -231,9 +330,12 @@ function InvestmentPage({ userData }) {
       gap: '0.5rem'
     },
     plansGrid: {
-      display: 'grid',
-      gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)',
-      gap: '1.5rem'
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : `repeat(auto-fit, minmax(250px, 1fr))`,
+        justifyContent: 'center', 
+        gap: '1.5rem',
+        maxWidth: '1200px',
+        margin: '0 auto',
     },
     planCard: {
       background: FORM_CARD_BG,
@@ -381,10 +483,12 @@ function InvestmentPage({ userData }) {
     navIcon: {
       fontSize: '24px',
       marginBottom: '6px',
-      transition: 'all 0.3s ease'
+      transition: 'all 0.3s ease',
+      color: TEXT_GRAY
     },
     navIconActive: {
-      transform: 'scale(1.15)'
+      transform: 'scale(1.15)',
+      color: PURPLE_PRIMARY
     },
     navLabel: {
       fontSize: '11px',
@@ -414,30 +518,172 @@ function InvestmentPage({ userData }) {
       animation: 'spin 1s linear infinite'
     }
   };
-  // End of Styles
+  // --- END STYLES ---
 
-  // Navigation handler
-  const handleNavigation = (tab) => {
-    setActiveTab(tab);
-    if (tab === 'home') {
-      navigate('/dashboard');
-    } else if (tab === 'deposit') {
-      navigate('/deposit');
-    } else if (tab === 'team') {
-      navigate('/team');
-    } else if (tab === 'profile') {
-      navigate('/profile');
+
+  // Helper to assign icon and custom color to each plan based on its index
+  const getPlanStyle = (index) => {
+    const defaultStyles = [
+        { color: "#8B5CF6", icon: "🏡" }, // Purple
+        { color: "#06b6d4", icon: "🏘️" }, // Cyan
+        { color: "#10b981", icon: "🏢" }, // Green
+        { color: "#f59e0b", icon: "🏰" }  // Amber
+    ];
+    return defaultStyles[index % defaultStyles.length];
+  };
+
+  // --- API CALL TO FETCH PLANS ---
+  const fetchInvestmentPlans = async (token) => {
+    try {
+        const response = await axios.get(`${BASE_URL}/transactions/plans/`, {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+
+        const formattedPlans = response.data.map((plan, index) => {
+            const dailyProfit = parseFloat(plan.daily_profit || 0);
+            const durationDays = parseInt(plan.duration_days || 0);
+            const style = getPlanStyle(index);
+
+            // Calculate Monthly/Annual Profit (used for presentation only, totalProfit is from API)
+            const monthlyProfit = dailyProfit * 30;
+            const annualProfit = dailyProfit * 365;
+            
+            return {
+                id: plan.id,
+                title: plan.title,
+                investment: parseFloat(plan.amount),
+                dailyProfit: dailyProfit,
+                durationDays: durationDays,
+                totalProfit: parseFloat(plan.total_profit),
+                monthlyProfit: monthlyProfit,
+                annualProfit: annualProfit,
+                duration: `${durationDays} Days`,
+                features: ["Daily Profit", "24/7 Support", "Secure Investment", "Flexible Withdrawal"], 
+                color: style.color,
+                icon: style.icon
+            };
+        });
+        setPlans(formattedPlans);
+    } catch (error) {
+        console.error('Error fetching plans:', error.response ? error.response.data : error.message);
+    } finally {
+        setLoading(false);
     }
   };
 
-  const [hoveredPlan, setHoveredPlan] = useState(null);
 
-  if (authLoading) { // This will now always be false
+  // --- API CALL FOR INVESTMENT ---
+  const handleConfirmInvest = async () => {
+    const token = sessionStorage.getItem('accessToken');
+    if (!token || !selectedPlanForInvestment) return;
+
+    // Show loading state in modal while API call is made
+    setModalMessage("Processing investment..."); 
+    
+    try {
+        const response = await axios.post(`${BASE_URL}/transactions/invest/`, 
+            { plan_id: selectedPlanForInvestment.id },
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+        
+        // Success response
+        setModalMessage(response.data.message || "Investment activated successfully. Congratulations!");
+
+    } catch (error) {
+        let errorMessage = "An unknown error occurred during investment.";
+        
+        if (error.response && error.response.data && error.response.data.error) {
+            errorMessage = error.response.data.error;
+        } else if (error.response && error.response.status === 401) {
+             errorMessage = "Authentication failed. Please log in again.";
+             removeTokens();
+             navigate('/login');
+             return;
+        } else {
+            errorMessage = error.message;
+        }
+
+        setModalMessage(`Error: ${errorMessage}`);
+
+    }
+  };
+
+
+  // --- HANDLERS ---
+  const handleInvestNow = (plan) => {
+    setSelectedPlanForInvestment(plan);
+    setModalMessage(null); // Set to null to show confirmation screen
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setSelectedPlanForInvestment(null);
+    setModalMessage(null);
+    // If successful, navigate back to dashboard to see active plan
+    if (modalMessage && modalMessage.toLowerCase().includes('successfully')) {
+      navigate('/'); 
+    }
+  };
+
+  const handleLogout = () => {
+    removeTokens(); // Use helper function
+    navigate('/login');
+  };
+
+  // Navigation handler
+  const handleNavigation = (tab) => {
+    if (tab === 'home') {
+      navigate('/');
+    } else if (tab === 'deposit') {
+      navigate('/deposit');
+    } else if (tab === 'team') {
+      navigate('/');
+    } else if (tab === 'profile') {
+      navigate('/');
+    }
+    // 'invest' stays here
+  };
+
+
+  // --- EFFECT HOOKS ---
+  useEffect(() => {
+    const token = sessionStorage.getItem('accessToken');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+    fetchInvestmentPlans(token);
+
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    
+    return () => window.removeEventListener('resize', handleResize);
+  }, [navigate]);
+
+
+  if (loading) {
     return (
       <div style={styles.loadingContainer}>
+        <style>
+            {`
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            body { margin: 0; background: ${DARK_BG}; }
+            `}
+        </style>
         <div style={styles.spinner}></div>
         <div style={{color: TEXT_GRAY, fontSize: '16px', fontWeight: '500'}}>
-          Loading...
+          Fetching investment plans...
         </div>
       </div>
     );
@@ -450,28 +696,28 @@ function InvestmentPage({ userData }) {
 
   return (
     <div style={styles.container}>
+      {/* Global CSS Animations */}
       <style>
         {`
-          @keyframes slideDown {
-            from { opacity: 0; transform: translateY(-30px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-          @keyframes slideUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-          body {
-            margin: 0;
-            background: ${DARK_BG};
-          }
+          @keyframes slideDown { from { opacity: 0; transform: translateY(-30px); } to { opacity: 1; transform: translateY(0); } }
+          @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+          body { margin: 0; background: ${DARK_BG}; }
         `}
       </style>
+      
+      {/* --- CONFIRMATION MODAL --- */}
+      {isModalOpen && selectedPlanForInvestment && (
+        <ConfirmationModal 
+            isOpen={isModalOpen} 
+            onClose={closeModal}
+            onConfirm={handleConfirmInvest}
+            plan={selectedPlanForInvestment}
+            message={modalMessage}
+        />
+      )}
 
-      {/* Header - Now using the userData PROP for the name */}
+      {/* Header */}
       <div style={styles.header}>
         <div style={styles.headerLeft}>
           <div style={styles.welcomeText}>As-salamu alaykum,</div>
@@ -487,31 +733,31 @@ function InvestmentPage({ userData }) {
         </div>
       </div>
 
-      {/* Main Content (Rest of the component is the same) */}
+      {/* Main Content */}
       <div style={styles.mainContent}>
         <h1 style={styles.pageTitle}>Investment Plans</h1>
-        <p style={styles.pageSubtitle}>Choose your plot-based investment plan and start earning daily profits</p>
+        <p style={styles.pageSubtitle}>Choose your plan and start earning daily profits</p>
 
         {/* Stats Section */}
         <div style={styles.statsSection}>
           <div style={styles.statsGrid}>
             <div style={styles.statCard}>
-              <div style={styles.statIcon}>💰</div>
-              <div style={styles.statValue}>4</div>
+              <div style={styles.statIcon}></div>
+              <div style={styles.statValue}>{plans.length}</div>
               <div style={styles.statLabel}>Plans Available</div>
             </div>
             <div style={styles.statCard}>
-              <div style={styles.statIcon}>📈</div>
-              <div style={styles.statValue}>Lifetime</div>
+              <div style={styles.statIcon}></div>
+              <div style={styles.statValue}>Varies</div>
               <div style={styles.statLabel}>Duration</div>
             </div>
             <div style={styles.statCard}>
-              <div style={styles.statIcon}>🔄</div>
+              <div style={styles.statIcon}></div>
               <div style={styles.statValue}>Daily</div>
               <div style={styles.statLabel}>Profit Payment</div>
             </div>
             <div style={styles.statCard}>
-              <div style={styles.statIcon}>⚡</div>
+              <div style={styles.statIcon}></div>
               <div style={styles.statValue}>Instant</div>
               <div style={styles.statLabel}>Withdrawal</div>
             </div>
@@ -521,64 +767,66 @@ function InvestmentPage({ userData }) {
         {/* Investment Plans */}
         <div style={styles.plansSection}>
           <div style={styles.sectionTitle}>
-            <span>🏗️</span> Available Plot Plans
+            <span>🏗️</span> Available Investment Plans
           </div>
 
           <div style={styles.plansGrid}>
-            {investmentPlans.map((plan) => (
+            {plans.map((plan) => (
               <div 
                 key={plan.id}
                 style={
                   hoveredPlan === plan.id 
-                    ? { ...styles.planCard, ...styles.planCardHover }
-                    : styles.planCard
+                    ? { ...styles.planCard, ...styles.planCardHover, borderColor: plan.color }
+                    : { ...styles.planCard, border: `1px solid ${plan.color}30` }
                 }
                 onMouseEnter={() => setHoveredPlan(plan.id)}
                 onMouseLeave={() => setHoveredPlan(null)}
               >
                 {/* Plan Header */}
                 <div style={styles.planHeader}>
-                  <div style={styles.planIcon}>{plan.icon}</div>
-                  <div style={styles.planName}>{plan.name}</div>
-                  <div style={styles.planDuration}>{plan.duration}</div>
+                  <div style={{...styles.planIcon, color: plan.color}}>{plan.icon}</div>
+                  <div style={styles.planName}>{plan.title}</div>
+                  <div style={{...styles.planDuration, background: `${plan.color}15`, color: plan.color}}>{plan.duration}</div>
                 </div>
 
                 {/* Investment Amount */}
-                <div style={styles.investmentSection}>
-                  <div style={styles.investmentAmount}>₨{plan.investment.toLocaleString()}</div>
+                <div style={{...styles.investmentSection, border: `1px solid ${plan.color}30`, background: `${plan.color}05`}}>
+                  <div style={{...styles.investmentAmount, color: plan.color}}>
+                    ₨{plan.investment.toLocaleString()}
+                  </div>
                   <div style={styles.investmentLabel}>Investment Amount</div>
                 </div>
 
                 {/* Profit Details */}
                 <div style={styles.profitGrid}>
-                  <div style={styles.profitCard}>
-                    <div style={styles.profitAmount}>₨{plan.dailyProfit}/day</div>
+                  {/* Daily Profit */}
+                  <div style={{...styles.profitCard, background: `${SUCCESS_GREEN}10`, border: `1px solid ${SUCCESS_GREEN}30`}}>
+                    <div style={styles.profitAmount}>₨{plan.dailyProfit.toLocaleString()}/day</div>
                     <div style={styles.profitLabel}>Daily Profit</div>
                   </div>
-                  <div style={styles.profitCard}>
-                    <div style={styles.profitAmount}>₨{plan.monthlyProfit.toLocaleString()}/mo</div>
-                    <div style={styles.profitLabel}>Monthly</div>
-                  </div>
+                  {/* Monthly Profit (Calculated for display) */}
+                  
                 </div>
 
-                {/* Annual Profit */}
+                {/* Total Profit (From API) */}
                 <div style={{
                   ...styles.profitCard,
                   gridColumn: '1 / -1',
-                  background: 'rgba(245, 158, 11, 0.1)',
+                  background: `${WARNING_AMBER}10`,
                   border: `1px solid ${WARNING_AMBER}30`
                 }}>
                   <div style={{...styles.profitAmount, color: WARNING_AMBER}}>
-                    ₨{plan.annualProfit.toLocaleString()}/year
+                    ₨{plan.totalProfit.toLocaleString()}
                   </div>
-                  <div style={styles.profitLabel}>Annual Profit</div>
+                  <div style={styles.profitLabel}>Total Return in {plan.duration}</div>
                 </div>
 
-                {/* Features */}
+
+                {/* Features (Static) */}
                 <div style={styles.featuresList}>
                   {plan.features.map((feature, index) => (
                     <div key={index} style={styles.featureItem}>
-                      <span style={styles.featureIcon}>✓</span>
+                      <span style={{...styles.featureIcon, color: plan.color}}>✓</span>
                       {feature}
                     </div>
                   ))}
@@ -586,15 +834,16 @@ function InvestmentPage({ userData }) {
 
                 {/* Invest Button */}
                 <button
-                  style={styles.investButton}
+                  style={{...styles.investButton, background: `linear-gradient(135deg, ${plan.color} 0%, ${plan.color} 100%)`}}
                   onClick={() => handleInvestNow(plan)}
-                  onMouseEnter={(e) => Object.assign(e.target.style, styles.investButtonHover)}
+                  onMouseEnter={(e) => Object.assign(e.target.style, styles.investButtonHover, {background: `linear-gradient(135deg, ${plan.color} 0%, ${plan.color} 100%)`})}
                   onMouseLeave={(e) => Object.assign(e.target.style, { 
                     transform: 'translateY(0)', 
-                    boxShadow: 'none' 
+                    boxShadow: 'none',
+                    background: `linear-gradient(135deg, ${plan.color} 0%, ${plan.color} 100%)`
                   })}
                 >
-                  Invest in {plan.name}
+                  Invest in {plan.title}
                 </button>
               </div>
             ))}
@@ -612,7 +861,7 @@ function InvestmentPage({ userData }) {
         ].map((nav) => (
           <div 
             key={nav.id}
-            style={activeTab === nav.id ? styles.navItemActive : styles.navItem}
+            style={activeTab === nav.id ? {...styles.navItem, ...styles.navItemActive} : styles.navItem}
             onClick={() => handleNavigation(nav.id)}
           >
             <div style={activeTab === nav.id ? styles.navIconActive : styles.navIcon}>

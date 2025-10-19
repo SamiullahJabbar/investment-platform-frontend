@@ -1,9 +1,11 @@
 // src/components/Register.js
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom'; // <--- ADDED: Import useNavigate
 import BASE_URL from '../api/baseURL';
 import sidebarImage from '../assets/images/sidebar.png';
 
 const Register = () => {
+  const navigate = useNavigate(); // <--- ADDED: Initialize useNavigate
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -121,12 +123,12 @@ const Register = () => {
         const data = await response.json();
 
         if (response.ok) {
-            setMessage(data.message || 'OTP verified. Account created successfully!');
+            setMessage(data.message || 'OTP verified. Account created successfully! Redirecting to login...');
             setError(''); // Clear any previous error
-            // Optionally redirect the user to a login or dashboard page after a short delay
+            // **UPDATED:** Redirect the user to the login page after a short delay
             setTimeout(() => {
-                // Example: window.location.href = '/login'; 
-            }, 3000);
+                navigate('/login'); 
+            }, 2000); // 2-second delay to show the success message
         } else {
             // Handle validation errors like "Invalid OTP or already verified."
             const errorMessage = data.error || data.message || 'OTP verification failed.';
@@ -230,6 +232,24 @@ const Register = () => {
       zIndex: 2,
     },
 
+    // **NEW STYLE: Mobile Image Container**
+    mobileImageContainer: {
+        width: '100%',
+        display: 'flex',
+        justifyContent: 'center',
+        padding: '2rem 0 0',
+        marginBottom: '1.5rem',
+    },
+    // **NEW STYLE: Mobile Circular Image**
+    mobileImage: {
+        width: '90px',
+        height: '90px',
+        borderRadius: '50%',
+        objectFit: 'cover',
+        border: `3px solid ${PURPLE_PRIMARY}`,
+        boxShadow: `0 0 0 8px ${FORM_CARD_BG}`,
+    },
+    
     // 4. Right Panel - Form Section (PROPER SPACING)
     rightPanel: {
       flex: 1,
@@ -435,6 +455,18 @@ const Register = () => {
         {/* Right Panel - Form Section */}
         <div style={styles.rightPanel}>
           <div style={styles.formContainer}>
+            
+            {/* **NEW BLOCK: Mobile Image (Show only on Mobile)** */}
+            {isMobile && (
+                <div style={styles.mobileImageContainer}>
+                    <img 
+                        src={sidebarImage} 
+                        alt="Welcome" 
+                        style={styles.mobileImage}
+                    />
+                </div>
+            )}
+            
             {step === 1 ? (
               <>
                 <h1 style={styles.title}>Create Your Account</h1>

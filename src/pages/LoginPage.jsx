@@ -43,7 +43,7 @@ saveAccessToken(access);
 
 setMessage('Login successful! Redirecting...');
 setTimeout(() => {
-window.location.href = '/dashboard';
+window.location.href = '/';
 }, 1500);
 } catch (err) {
 setMessage('Login failed. Please check your credentials.');
@@ -220,9 +220,26 @@ border: '1px solid #EF444440',
 fontWeight: '500',
 },
 
-// 7. Right Panel - IMAGE SECTION (Swapped position)
+// **NEW STYLE: Mobile Image Container**
+mobileImageContainer: {
+    width: '100%',
+    display: 'flex',
+    justifyContent: 'center',
+    paddingBottom: '2rem',
+},
+// **NEW STYLE: Mobile Circular Image**
+mobileImage: {
+    width: '90px',
+    height: '90px',
+    borderRadius: '50%',
+    objectFit: 'cover',
+    border: `3px solid ${PURPLE_PRIMARY}`,
+    boxShadow: `0 0 0 8px ${FORM_CARD_BG}`,
+},
+
+// 7. Right Panel - IMAGE SECTION (Now on right for desktop)
 rightPanel: {
-flex: isMobile ? '0 0 180px' : 1.3,
+flex: isMobile ? '0 0 0' : 1.3, // Set flex basis to 0 on mobile
 background: DARK_BG,
 display: 'flex',
 alignItems: 'center',
@@ -230,11 +247,11 @@ justifyContent: 'center',
 position: 'relative',
 overflow: 'hidden',
 flexDirection: isMobile ? 'row' : 'column',
-padding: isMobile ? '1rem' : '0',
+padding: isMobile ? '0' : '0', // Removed padding on mobile
 },
 sidebarImg: {
-width: isMobile ? '100%' : '100%',
-height: isMobile ? '100%' : '100%',
+width: '100%',
+height: '100%',
 objectFit: 'cover',
 display: 'block',
 filter: 'brightness(0.9)',
@@ -278,22 +295,22 @@ fontWeight: '400',
 display: isMobile ? 'none' : 'block',
 },
 
-// 8. Mobile Header - ONLY ON MOBILE
-mobileHeader: {
-display: isMobile ? 'flex' : 'none',
-background: `linear-gradient(135deg, ${PURPLE_PRIMARY} 0%, ${PURPLE_DARK} 100%)`,
-padding: '1.5rem',
-alignItems: 'center',
-justifyContent: 'center',
-borderBottom: '1px solid #2D3748',
-},
-mobileCompanyName: {
-fontSize: '1.8rem',
-fontWeight: '800',
-color: 'white',
-textAlign: 'center',
-textShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-},
+// 8. Mobile Header - ONLY ON MOBILE (REMOVED)
+// mobileHeader: {
+//     display: isMobile ? 'flex' : 'none',
+//     background: `linear-gradient(135deg, ${PURPLE_PRIMARY} 0%, ${PURPLE_DARK} 100%)`,
+//     padding: '1.5rem',
+//     alignItems: 'center',
+//     justifyContent: 'center',
+//     borderBottom: '1px solid #2D3748',
+// },
+// mobileCompanyName: {
+//     fontSize: '1.8rem',
+//     fontWeight: '800',
+//     color: 'white',
+//     textAlign: 'center',
+//     textShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+// },
 
 // 9. Footer Link
 footer: {
@@ -348,14 +365,25 @@ animation: buttonShine 0.8s ease;
 </style>
 
 <div style={styles.mainCard}>
-{/* Mobile Header - ONLY ON MOBILE */}
-<div style={styles.mobileHeader}>
-<div style={styles.mobileCompanyName}>Investment Accounting</div>
-</div>
+{/* Mobile Header - ONLY ON MOBILE (REMOVED THIS BLOCK) */}
+{/* <div style={styles.mobileHeader}>
+    <div style={styles.mobileCompanyName}>Investment Accounting</div>
+</div> */}
 
 {/* Left Panel - FORM SECTION (Now on left for desktop) */}
 <div style={styles.leftPanel}>
 <div style={styles.formContainer}>
+{/* **NEW BLOCK: Mobile Image (Show only on Mobile)** */}
+{isMobile && (
+    <div style={styles.mobileImageContainer}>
+        <img 
+            src={sidebarImage} 
+            alt="Welcome" 
+            style={styles.mobileImage}
+        />
+    </div>
+)}
+
 <h1 style={styles.title}>Welcome Back</h1>
 <p style={styles.loginLink}>
 Don't have an account?{' '}
@@ -466,20 +494,25 @@ Forgot Password?
 </div>
 {/* Right Panel - IMAGE SECTION (Now on right for desktop) */}
 <div style={styles.rightPanel}>
-<img
-src={sidebarImage}
-alt="Investment Platform"
-style={styles.sidebarImg}
-/>
-<div style={styles.rightContent}>
-{/* Company Name - Show on both mobile and desktop */}
-<div style={styles.companyName}>Investment Accounting</div>
-{/* Title and Subtitle - Show only on desktop */}
-<h2 style={styles.rightTitle}>Continue Your Journey</h2>
-<p style={styles.rightSubtitle}>
-Access your investment portfolio and continue growing your wealth with our secure platform.
-</p>
-</div>
+{/* Conditional rendering for desktop image panel content */}
+{!isMobile && (
+    <>
+        <img
+            src={sidebarImage}
+            alt="Investment Platform"
+            style={styles.sidebarImg}
+        />
+        <div style={styles.rightContent}>
+            {/* Company Name - Show on both mobile and desktop (but mobile one was in mobileHeader) */}
+            <div style={styles.companyName}>Investment Accounting</div>
+            {/* Title and Subtitle - Show only on desktop */}
+            <h2 style={styles.rightTitle}>Continue Your Journey</h2>
+            <p style={styles.rightSubtitle}>
+                Access your investment portfolio and continue growing your wealth with our secure platform.
+            </p>
+        </div>
+    </>
+)}
 </div>
 </div>
 </div>
