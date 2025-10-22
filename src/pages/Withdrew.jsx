@@ -2,50 +2,70 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import BASE_URL from '../api/baseURL';
+import Layout from '../components/Layout'; 
+import { 
+    FaHistory, FaChevronLeft, FaSpinner, 
+    FaUniversity, FaMobileAlt, FaWallet,
+    FaCheckCircle, FaClock, FaTimesCircle,
+    FaSearch, FaCalendarAlt, FaMoneyBillWave,
+    FaFilter, FaArrowLeft
+} from 'react-icons/fa';
 
-// 🚨 Utility function to decode JWT token 🚨
+// --- UTILITY FUNCTIONS ---
 const jwtDecode = (token) => {
+    if (!token) return null;
     try {
         const base64Url = token.split('.')[1];
         const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
         const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
             return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
         }).join(''));
-
         return JSON.parse(jsonPayload);
     } catch (e) {
         return null;
     }
 };
 
-// --- COLOR CONSTANTS (Same as before) ---
-const PURPLE_PRIMARY = '#8B5CF6'; 
-const PURPLE_DARK = '#7C3AED';
-const PURPLE_LIGHT = '#A78BFA';
-const DARK_BG = '#0F0F23';       
-const FORM_CARD_BG = '#1A1B2F';   
-const TEXT_LIGHT = '#F8FAFC';     
-const TEXT_GRAY = '#94A3B8';
-const TEXT_DARK_GRAY = '#64748B';
+const removeTokens = () => {
+    sessionStorage.removeItem('accessToken');
+    sessionStorage.removeItem('refreshToken');
+};
+
+// --- API Endpoints ---
+const WITHDRAW_SUBMIT_ENDPOINT = `${BASE_URL}/transactions/withdraw/`;
+const WITHDRAW_HISTORY_ENDPOINT = `${BASE_URL}/transactions/withdraw/history/`;
+
+// --- COLOR CONSTANTS ---
+const GREEN_PRIMARY = '#047857';
+const GREEN_DARK = '#065F46';
+const GREEN_LIGHT = '#D1FAE5';
+const BG_LIGHT = '#F8FAFC';
+const FORM_CARD_BG = '#FFFFFF';
+const INPUT_BG = '#F8FAFC';
+const TEXT_DARK = '#1E293B';
+const TEXT_GRAY = '#64748B';
+const TEXT_DARK_GRAY = '#94A3B8';
 const SUCCESS_GREEN = '#10B981';
 const ERROR_RED = '#EF4444';
 const WARNING_AMBER = '#F59E0B';
-
+const BORDER_COLOR = '#E2E8F0';
 
 function WithdrawPage() {
   const navigate = useNavigate();
-  const [userData, setUserData] = useState(null); 
   const [loading, setLoading] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
-  const [activeTab] = useState('deposit'); 
+  const [activeTab, setActiveTab] = useState('Withdraw'); 
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [message, setMessage] = useState({ text: '', type: '' });
-  const [step, setStep] = useState(1); // 1: Method Select, 2: Details Fill, 3: Success
+  const [step, setStep] = useState(1);
+  const [history, setHistory] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
 
   // Form State
   const [form, setForm] = useState({
     amount: '',
-    method: 'BankTransfer', // Default selection
+    method: 'BankTransfer', 
     bank_name: '',
     account_owner: '',
     bank_account: ''
@@ -53,52 +73,103 @@ function WithdrawPage() {
 
   // Available Methods for Step 1 UI
   const paymentMethods = useMemo(() => [
-    { id: 'BankTransfer', name: 'Bank Transfer', icon: '🏦', details: 'Full name, Bank Name, Account/IBAN' },
-    { id: 'JazzCash', name: 'JazzCash', icon: '📱', details: 'Full name, Phone Number' },
-    { id: 'EasyPaisa', name: 'EasyPaisa', icon: '💸', details: 'Full name, Phone Number' },
+    { id: 'BankTransfer', name: 'Bank Transfer', icon: FaUniversity, details: 'Full name, Bank Name, Account/IBAN' },
+    { id: 'JazzCash', name: 'JazzCash', icon: FaMobileAlt, details: 'Full name, Phone Number' },
+    { id: 'EasyPaisa', name: 'EasyPaisa', icon: FaWallet, details: 'Full name, Phone Number' },
   ], []);
 
+  // Filtered History
+  const filteredHistory = useMemo(() => {
+    return history.filter(item => {
+      const matchesSearch = item.method.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           item.bank_account.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           item.amount.toString().includes(searchTerm);
+      
+      const matchesStatus = statusFilter === 'All' || item.status === statusFilter;
+      
+      return matchesSearch && matchesStatus;
+    });
+  }, [history, searchTerm, statusFilter]);
+
+  // Statistics
+  const stats = useMemo(() => {
+    const total = history.length;
+    const successful = history.filter(item => item.status === 'Successful').length;
+    const pending = history.filter(item => item.status === 'Pending').length;
+    const totalAmount = history.reduce((sum, item) => sum + parseFloat(item.amount), 0);
+    
+    return { total, successful, pending, totalAmount };
+  }, [history]);
+
+  // --- API FETCH FUNCTIONS ---
+  const fetchWithdrawHistory = async () => {
+    const token = sessionStorage.getItem('accessToken');
+    if (!token) return;
+
+    try {
+        setLoading(true);
+        const res = await axios.get(WITHDRAW_HISTORY_ENDPOINT, { 
+            headers: { Authorization: `Bearer ${token}` } 
+        });
+        setHistory(res.data);
+    } catch (err) {
+        console.error("History API Error:", err.response || err);
+        setMessage({ text: 'Failed to fetch withdrawal history.', type: 'error' });
+        setHistory([]);
+    } finally {
+        setLoading(false);
+    }
+  };
 
   // --- Authentication and Setup ---
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
     
-    const token = sessionStorage.getItem('accessToken');
-    
-    if (!token) {
-      navigate('/login');
-      return;
-    }
+    const checkAuth = () => {
+        const token = sessionStorage.getItem('accessToken');
+        
+        if (!token) {
+          navigate('/login');
+          return;
+        }
 
-    const decodedPayload = jwtDecode(token);
-    
-    if (decodedPayload) {
-        setUserData({ 
-            first_name: decodedPayload.first_name || decodedPayload.name, 
-            username: decodedPayload.username || decodedPayload.sub
-        });
-    } else {
-        setUserData({ first_name: 'Authenticated' }); 
-    }
-    
-    setAuthLoading(false);
+        const decodedPayload = jwtDecode(token);
+        
+        if (!decodedPayload) {
+             removeTokens();
+             navigate('/login');
+             return;
+        }
+
+        setAuthLoading(false);
+    };
+
+    checkAuth();
     return () => window.removeEventListener('resize', handleResize);
   }, [navigate]);
+  
+  useEffect(() => {
+    if (activeTab === 'History' && history.length === 0) {
+        fetchWithdrawHistory();
+    }
+  }, [activeTab, history.length]);
 
   const isMobile = windowWidth <= 768;
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('accessToken');
-    sessionStorage.removeItem('refreshToken');
-    navigate('/login');
-  };
-
   const handleNavigation = (tab) => {
+    if (tab === 'History' || tab === 'Withdraw') {
+        setActiveTab(tab);
+        if (tab === 'Withdraw') setStep(1);
+        setMessage({ text: '', type: '' });
+        return;
+    }
+
     if (tab === 'home') navigate('/');
     else if (tab === 'invest') navigate('/invest');
+    else if (tab === 'deposit') navigate('/deposit'); 
+    else if (tab === 'profile') navigate('/profile');
     else if (tab === 'history') navigate('/DepositHistory'); 
-    else if (tab === 'profile') navigate('/');
   };
 
   const handleChange = (e) => {
@@ -106,12 +177,10 @@ function WithdrawPage() {
     setForm(prev => ({ ...prev, [name]: value }));
   };
   
-  // Reset form details when method changes in Step 1
   const handleMethodChange = (methodId) => {
       setForm(prev => ({ 
           ...prev, 
           method: methodId,
-          // Clear payment details fields when method is switched
           bank_name: '',
           account_owner: '',
           bank_account: ''
@@ -119,7 +188,7 @@ function WithdrawPage() {
       setMessage({ text: '', type: '' });
   }
 
-
+  // --- FORM SUBMISSION ---
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -131,22 +200,26 @@ function WithdrawPage() {
         const payload = {
             amount: parseFloat(form.amount),
             method: form.method,
-            bank_name: form.method === 'BankTransfer' ? form.bank_name : undefined, // Only include for BankTransfer
+            bank_name: form.method === 'BankTransfer' ? form.bank_name : undefined, 
             account_owner: form.account_owner,
             bank_account: form.bank_account
         };
         
-        // Remove undefined fields for cleaner payload
         Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]);
+        
+        if (payload.amount < 100) {
+             setMessage({ text: 'Minimum withdrawal amount is 100 PKR.', type: 'error' });
+             setLoading(false);
+             return;
+        }
 
-        const response = await axios.post(`${BASE_URL}/transactions/withdraw/`, payload, {
+        const response = await axios.post(WITHDRAW_SUBMIT_ENDPOINT, payload, {
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             }
         });
         
-        // Success: Move to Step 3 (Success Screen)
         setMessage({ 
             text: response.data.message || 'Withdrawal request submitted.', 
             type: 'success' 
@@ -161,83 +234,42 @@ function WithdrawPage() {
             errorText = error.response.data.error;
         } else if (error.response?.status === 401) {
             errorText = 'Session expired. Redirecting to login.';
-            sessionStorage.removeItem('accessToken');
-            sessionStorage.removeItem('refreshToken');
+            removeTokens();
             setTimeout(() => navigate('/login'), 1500);
+        } else if (error.response?.data) {
+            errorText = Object.values(error.response.data).flat().join(' | ');
         }
 
         setMessage({ text: errorText, type: 'error' });
-        setStep(2); // Stay on step 2 to fix the error
+        setStep(2); 
     } finally {
         setLoading(false);
     }
   };
 
-  // --- STYLES (Common Styles) ---
-  const commonStyles = {
-    // ... (All existing styles copied to avoid repetition issues)
+  // --- STYLES ---
+  const styles = {
     container: {
-      minHeight: '100vh',
-      background: DARK_BG,
-      color: TEXT_LIGHT,
+      background: BG_LIGHT, 
+      color: TEXT_DARK, 
       fontFamily: "'Inter', 'Segoe UI', 'Arial', sans-serif",
       position: 'relative',
-      paddingBottom: '90px'
-    },
-    header: {
-      padding: '20px 16px 16px',
-      background: 'rgba(26, 27, 47, 0.95)',
-      backdropFilter: 'blur(20px)',
-      borderBottom: `1px solid ${TEXT_DARK_GRAY}30`,
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      animation: 'slideDown 0.6s ease-out'
-    },
-    headerLeft: {
-      flex: 1
-    },
-    welcomeText: {
-      fontSize: '14px',
-      color: TEXT_GRAY,
-      marginBottom: '4px'
-    },
-    userName: {
-      fontSize: '20px',
-      fontWeight: '700',
-      background: `linear-gradient(135deg, ${TEXT_LIGHT}, ${PURPLE_LIGHT})`,
-      backgroundClip: 'text',
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent'
-    },
-    notificationBtn: {
-      background: 'rgba(139, 92, 246, 0.2)',
-      border: `1px solid ${PURPLE_PRIMARY}30`,
-      borderRadius: '50%',
-      width: '44px',
-      height: '44px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      cursor: 'pointer',
-      position: 'relative',
-      transition: 'all 0.3s ease'
     },
     mainContent: {
-      padding: isMobile ? '1.5rem 1rem' : '2rem',
-      maxWidth: '500px',
-      margin: '0 auto'
+      paddingTop: '1.5rem', 
+      paddingBottom: '3rem', 
+      paddingLeft: isMobile ? '1rem' : '2rem',
+      paddingRight: isMobile ? '1rem' : '2rem',
+      maxWidth: '1200px',
+      margin: '0 auto',
     },
     pageTitle: {
       fontSize: isMobile ? '1.8rem' : '2.2rem',
       fontWeight: '800',
-      color: TEXT_LIGHT,
+      color: TEXT_DARK,
       marginBottom: '0.5rem',
       textAlign: 'center',
-      background: 'linear-gradient(135deg, #FFFFFF 0%, #E2E8F0 100%)',
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
-      backgroundClip: 'text'
+      marginTop: '1rem' 
     },
     pageSubtitle: {
       fontSize: '1rem',
@@ -249,35 +281,32 @@ function WithdrawPage() {
     formCard: {
       background: FORM_CARD_BG,
       borderRadius: '20px',
-      padding: isMobile ? '1.5rem' : '2.5rem',
-      border: `1px solid ${TEXT_DARK_GRAY}30`,
-      boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)',
-      animation: 'slideUp 0.6s ease-out 0.2s both'
+      padding: isMobile ? '1.5rem' : '2.5rem', 
+      border: `1px solid ${BORDER_COLOR}`,
+      boxShadow: '0 5px 20px rgba(0, 0, 0, 0.05)',
+      animation: 'slideUp 0.6s ease-out',
     },
     formGroup: {
       marginBottom: '1.5rem'
     },
     label: {
       display: 'block',
-      fontSize: '0.9rem',
+      fontSize: '0.95rem',
       fontWeight: '600',
-      color: TEXT_LIGHT,
+      color: TEXT_DARK,
       marginBottom: '0.5rem'
     },
     input: {
       width: '100%',
-      padding: '0.75rem 1rem',
-      background: DARK_BG,
-      border: `1px solid ${TEXT_DARK_GRAY}`,
-      borderRadius: '10px',
-      color: TEXT_LIGHT,
+      padding: '1rem 1.2rem',
+      background: INPUT_BG,
+      border: `2px solid ${INPUT_BG}`,
+      borderRadius: '12px',
+      color: TEXT_DARK,
       fontSize: '1rem',
-      transition: 'border-color 0.3s ease, box-shadow 0.3s ease',
-      outline: 'none'
-    },
-    inputFocus: {
-      borderColor: PURPLE_PRIMARY,
-      boxShadow: `0 0 0 3px ${PURPLE_PRIMARY}30`
+      transition: 'all 0.3s ease',
+      outline: 'none',
+      boxSizing: 'border-box'
     },
     messageBox: (type) => ({
       padding: '1rem',
@@ -298,84 +327,58 @@ function WithdrawPage() {
       })
     }),
     button: {
-      width: '100%',
-      padding: '1rem',
-      backgroundColor: PURPLE_PRIMARY,
-      color: TEXT_LIGHT,
+      background: `linear-gradient(135deg, ${GREEN_PRIMARY} 0%, ${GREEN_DARK} 100%)`,
+      color: 'white',
       border: 'none',
-      borderRadius: '10px',
-      fontSize: '1.1rem',
+      padding: '1.2rem 2rem',
+      borderRadius: '12px',
+      fontSize: '1rem',
       fontWeight: '700',
       cursor: 'pointer',
-      transition: 'background-color 0.3s ease, transform 0.2s ease',
+      transition: 'all 0.3s ease',
+      width: 'auto',
+      minWidth: '200px',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: '0.75rem'
-    },
-    buttonHover: {
-      backgroundColor: PURPLE_DARK,
-      transform: 'translateY(-1px)'
+      gap: '0.75rem',
+      boxShadow: `0 5px 15px ${GREEN_PRIMARY}30`,
+      margin: '0 auto'
     },
     buttonDisabled: {
-      backgroundColor: TEXT_DARK_GRAY,
-      cursor: 'not-allowed'
+      opacity: 0.6,
+      cursor: 'not-allowed',
+      transform: 'none',
+      boxShadow: 'none',
+      background: TEXT_DARK_GRAY 
     },
-    bottomNav: {
-      position: 'fixed',
-      bottom: '0',
-      left: '0',
-      right: '0',
-      height: '85px',
-      background: 'rgba(26, 27, 47, 0.95)',
-      backdropFilter: 'blur(25px)',
-      borderTop: `1px solid ${TEXT_DARK_GRAY}30`,
-      display: 'flex',
-      justifyContent: 'space-around',
-      alignItems: 'center',
-      padding: '12px 0',
-      boxShadow: '0 -8px 30px rgba(0, 0, 0, 0.3)',
-      zIndex: 1000
+    backBtn: {
+        background: INPUT_BG,
+        color: TEXT_GRAY,
+        border: `1px solid ${TEXT_DARK_GRAY}50`,
+        padding: '1.2rem 2rem',
+        borderRadius: '12px',
+        fontSize: '1rem',
+        fontWeight: '700',
+        cursor: 'pointer',
+        transition: 'all 0.3s ease',
+        flex: 1,
     },
-    navItem: {
-      textAlign: 'center',
-      cursor: 'pointer',
-      padding: '12px 14px',
-      borderRadius: '16px',
-      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-      flex: 1,
-      margin: '0 6px'
+    buttonGroup: {
+        display: 'flex',
+        gap: '1rem',
+        marginTop: '1.5rem', 
+        flexDirection: isMobile ? 'column' : 'row',
+        alignItems: 'center',
+        justifyContent: 'center'
     },
-    navItemActive: {
-      background: 'rgba(139, 92, 246, 0.2)',
-      border: `1px solid ${PURPLE_PRIMARY}40`,
-      transform: 'translateY(-6px)'
-    },
-    navIcon: {
-      fontSize: '24px',
-      marginBottom: '6px',
-      transition: 'all 0.3s ease'
-    },
-    navIconActive: {
-      transform: 'scale(1.15)'
-    },
-    navLabel: {
-      fontSize: '11px',
-      fontWeight: '500',
-      color: TEXT_GRAY,
-      transition: 'all 0.3s ease'
-    },
-    navLabelActive: {
-      color: PURPLE_PRIMARY,
-      fontWeight: '700'
-    },
-    // NEW STEPPER/WIZARD STYLES
     stepContainer: {
         display: 'flex',
         justifyContent: 'space-between',
         marginBottom: '2rem',
         padding: '0 10px',
-        animation: 'slideDown 0.5s ease-out'
+        maxWidth: '350px',
+        margin: '0 auto 2rem'
     },
     stepItem: (isActive, isComplete) => ({
         flex: 1,
@@ -383,28 +386,30 @@ function WithdrawPage() {
         padding: '0 5px',
         position: 'relative',
         cursor: isComplete ? 'pointer' : 'default',
-        color: isActive ? PURPLE_PRIMARY : isComplete ? TEXT_GRAY : TEXT_DARK_GRAY
+        color: isActive ? GREEN_PRIMARY : isComplete ? TEXT_DARK : TEXT_GRAY,
+        transition: 'color 0.3s ease',
+        minWidth: '30%',
     }),
     stepLine: {
         position: 'absolute',
-        top: '12px',
+        top: '15px',
         left: '50%',
         right: '-50%',
-        height: '2px',
+        height: '3px',
         backgroundColor: TEXT_DARK_GRAY + '50',
-        zIndex: 1
+        zIndex: 1,
+        transition: 'background-color 0.4s ease'
     },
     stepLineActive: (isComplete) => ({
-        backgroundColor: isComplete ? SUCCESS_GREEN : PURPLE_PRIMARY,
-        transition: 'background-color 0.4s ease'
+        backgroundColor: isComplete ? SUCCESS_GREEN : GREEN_PRIMARY,
     }),
     stepCircle: (isActive, isComplete) => ({
-        width: '24px',
-        height: '24px',
+        width: '32px',
+        height: '32px',
         borderRadius: '50%',
-        backgroundColor: isActive ? PURPLE_PRIMARY : isComplete ? SUCCESS_GREEN : FORM_CARD_BG,
-        border: `2px solid ${isActive ? PURPLE_PRIMARY : isComplete ? SUCCESS_GREEN : TEXT_DARK_GRAY}`,
-        color: TEXT_LIGHT,
+        backgroundColor: isActive ? GREEN_PRIMARY : isComplete ? SUCCESS_GREEN : INPUT_BG,
+        border: `3px solid ${isActive ? GREEN_PRIMARY : isComplete ? SUCCESS_GREEN : BORDER_COLOR}`,
+        color: isActive || isComplete ? 'white' : TEXT_DARK,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -412,13 +417,12 @@ function WithdrawPage() {
         position: 'relative',
         zIndex: 2,
         fontWeight: '700',
-        fontSize: '14px',
+        fontSize: '15px',
         transition: 'all 0.3s ease'
     }),
-    // New Method Card Style for Step 1
     methodCard: (isSelected) => ({
-        background: isSelected ? 'rgba(139, 92, 246, 0.2)' : FORM_CARD_BG,
-        border: `2px solid ${isSelected ? PURPLE_PRIMARY : TEXT_DARK_GRAY + '30'}`,
+        background: isSelected ? 'rgba(4, 120, 87, 0.1)' : FORM_CARD_BG,
+        border: `2px solid ${isSelected ? GREEN_PRIMARY : BORDER_COLOR}`,
         borderRadius: '16px',
         padding: '1.2rem',
         marginBottom: '1rem',
@@ -426,28 +430,29 @@ function WithdrawPage() {
         alignItems: 'center',
         cursor: 'pointer',
         transition: 'all 0.3s ease',
-        boxShadow: isSelected ? `0 0 15px ${PURPLE_PRIMARY}30` : 'none'
+        boxShadow: isSelected ? `0 0 10px ${GREEN_PRIMARY}20` : '0 1px 3px rgba(0,0,0,0.05)'
     }),
     methodIcon: {
         fontSize: '1.8rem',
-        marginRight: '1rem'
+        marginRight: '1rem',
+        color: GREEN_PRIMARY
     },
     methodName: {
         fontSize: '1.1rem',
-        fontWeight: '600',
-        color: TEXT_LIGHT
+        fontWeight: '700',
+        color: TEXT_DARK
     },
     methodDetails: {
         fontSize: '0.8rem',
         color: TEXT_GRAY
     },
-    // Success Screen Styles (Step 3)
     successScreen: {
         textAlign: 'center',
         padding: '3rem 1.5rem',
         background: FORM_CARD_BG,
         borderRadius: '20px',
         border: `1px solid ${SUCCESS_GREEN}50`,
+        boxShadow: '0 5px 20px rgba(0, 0, 0, 0.05)',
         animation: 'slideUp 0.6s ease-out 0.4s both'
     },
     successIcon: {
@@ -458,7 +463,7 @@ function WithdrawPage() {
     successTitle: {
         fontSize: '1.8rem',
         fontWeight: '800',
-        color: SUCCESS_GREEN,
+        color: GREEN_DARK,
         marginBottom: '0.75rem'
     },
     successMessage: {
@@ -466,35 +471,188 @@ function WithdrawPage() {
         color: TEXT_GRAY,
         marginBottom: '1.5rem',
         lineHeight: '1.6'
-    }
-  };
+    },
+    historyButton: {
+        background: FORM_CARD_BG,
+        color: GREEN_PRIMARY,
+        border: `1px solid ${GREEN_PRIMARY}50`,
+        padding: '1rem',
+        borderRadius: '12px',
+        fontSize: '1rem',
+        fontWeight: '700',
+        cursor: 'pointer',
+        width: isMobile ? '100%' : 'auto',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '0.5rem',
+        margin: '1.5rem auto 0',
+        maxWidth: '350px',
+        boxShadow: '0 4px 10px rgba(0, 0, 0, 0.05)',
+        transition: 'all 0.3s ease',
+    },
+    
+    // New Professional History Styles
+    historyContainer: {
+      paddingBottom: '2rem'
+    },
+    statsGrid: {
+      display: 'grid',
+      gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+      gap: '1rem',
+      marginBottom: '2rem'
+    },
+    statCard: {
+      background: FORM_CARD_BG,
+      borderRadius: '16px',
+      padding: '1.5rem',
+      border: `1px solid ${BORDER_COLOR}`,
+      boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)',
+      textAlign: 'center'
+    },
+    statValue: {
+      fontSize: '1.8rem',
+      fontWeight: '800',
+      color: GREEN_DARK,
+      marginBottom: '0.5rem'
+    },
+    statLabel: {
+      fontSize: '0.9rem',
+      color: TEXT_GRAY,
+      fontWeight: '600'
+    },
+    filtersContainer: {
+      background: FORM_CARD_BG,
+      borderRadius: '16px',
+      padding: '1.5rem',
+      marginBottom: '1.5rem',
+      border: `1px solid ${BORDER_COLOR}`
+    },
+    filterRow: {
+      display: 'flex',
+      gap: '1rem',
+      flexDirection: isMobile ? 'column' : 'row',
+      alignItems: 'center'
+    },
+    searchInput: {
+      flex: 1,
+      padding: '0.75rem 1rem',
+      background: INPUT_BG,
+      border: `1px solid ${BORDER_COLOR}`,
+      borderRadius: '10px',
+      fontSize: '0.9rem',
+      width: '100%'
+    },
+    filterSelect: {
+      padding: '0.75rem 1rem',
+      background: INPUT_BG,
+      border: `1px solid ${BORDER_COLOR}`,
+      borderRadius: '10px',
+      fontSize: '0.9rem',
+      minWidth: '150px'
+    },
+    historyTable: {
+      background: FORM_CARD_BG,
+      borderRadius: '16px',
+      overflow: 'hidden',
+      border: `1px solid ${BORDER_COLOR}`,
+      boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)'
+    },
+    tableHeader: {
+      background: '#F8FAFC',
+      padding: '1rem 1.5rem',
+      borderBottom: `1px solid ${BORDER_COLOR}`,
+      display: isMobile ? 'none' : 'grid',
+      gridTemplateColumns: '1fr 1fr 1fr 1fr 0.5fr',
+      gap: '1rem',
+      fontWeight: '600',
+      color: TEXT_DARK,
+      fontSize: '0.9rem'
+    },
+    tableRow: {
+      padding: '1rem 1.5rem',
+      borderBottom: `1px solid ${BORDER_COLOR}`,
+      display: isMobile ? 'block' : 'grid',
+      gridTemplateColumns: '1fr 1fr 1fr 1fr 0.5fr',
+      gap: '1rem',
+      alignItems: 'center',
+      transition: 'background 0.2s ease'
+    },
+    mobileCard: {
+      background: FORM_CARD_BG,
+      borderRadius: '12px',
+      padding: '1.2rem',
+      marginBottom: '1rem',
+      border: `1px solid ${BORDER_COLOR}`,
+      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)'
+    },
+    statusBadge: (status) => {
+        let color, bg, Icon;
+        if (status === 'Successful') { 
+            color = SUCCESS_GREEN; 
+            bg = 'rgba(16, 185, 129, 0.1)'; 
+            Icon = FaCheckCircle;
+        }
+        else if (status === 'Pending') { 
+            color = WARNING_AMBER; 
+            bg = 'rgba(245, 158, 11, 0.1)'; 
+            Icon = FaClock;
+        }
+        else { 
+            color = ERROR_RED; 
+            bg = 'rgba(239, 68, 68, 0.1)'; 
+            Icon = FaTimesCircle;
+        }
 
+        return {
+            padding: '0.4rem 0.8rem',
+            borderRadius: '20px',
+            fontWeight: '600',
+            fontSize: '0.8rem',
+            color: color,
+            background: bg,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            border: `1px solid ${color}30`,
+            width: 'fit-content'
+        };
+    },
+    emptyState: {
+      textAlign: 'center',
+      padding: '3rem 2rem',
+      color: TEXT_GRAY
+    },
+  };
 
   // --- STEP 1: Method Selection ---
   const renderStep1 = () => (
-    <div style={{ animation: 'slideUp 0.5s ease-out' }}>
-      <h3 style={{ ...commonStyles.label, fontSize: '1.1rem', textAlign: 'center', marginBottom: '1.5rem' }}>
+    <div style={styles.formCard}>
+      <h3 style={{ ...styles.label, fontSize: '1.1rem', textAlign: 'center', marginBottom: '1.5rem', color: GREEN_DARK }}>
         Step 1: Choose Withdrawal Method
       </h3>
-      {paymentMethods.map(method => (
-        <div
-          key={method.id}
-          style={commonStyles.methodCard(form.method === method.id)}
-          onClick={() => handleMethodChange(method.id)}
-        >
-          <span style={commonStyles.methodIcon}>{method.icon}</span>
-          <div>
-            <div style={commonStyles.methodName}>{method.name}</div>
-            <div style={commonStyles.methodDetails}>Requires: {method.details}</div>
-          </div>
-        </div>
-      ))}
+      {paymentMethods.map(method => {
+        const IconComponent = method.icon;
+        return (
+            <div
+              key={method.id}
+              style={styles.methodCard(form.method === method.id)}
+              onClick={() => handleMethodChange(method.id)}
+            >
+              <span style={styles.methodIcon}><IconComponent /></span>
+              <div>
+                <div style={styles.methodName}>{method.name}</div>
+                <div style={styles.methodDetails}>Requires: {method.details}</div>
+              </div>
+            </div>
+        );
+      })}
 
       <button
-        style={commonStyles.button}
+        style={styles.button}
         onClick={() => setStep(2)}
       >
-        Next: Enter Details
+        Next: Enter Details <FaChevronLeft style={{transform: 'rotate(180deg)', marginLeft: '0.5rem'}} />
       </button>
     </div>
   );
@@ -502,72 +660,74 @@ function WithdrawPage() {
   // --- STEP 2: Details and Amount ---
   const renderStep2 = () => {
     const selectedMethod = paymentMethods.find(m => m.id === form.method);
-    const isFormValid = form.amount > 0 && form.account_owner && form.bank_account && (form.method !== 'BankTransfer' || form.bank_name);
+    const amountNum = parseFloat(form.amount);
+    const isAmountValid = amountNum >= 100 && !isNaN(amountNum);
+    const isFormValid = isAmountValid && form.account_owner && form.bank_account && (form.method !== 'BankTransfer' || form.bank_name);
 
     return (
-        <form onSubmit={handleSubmit} style={{ animation: 'slideUp 0.5s ease-out' }}>
-            <h3 style={{ ...commonStyles.label, fontSize: '1.1rem', textAlign: 'center', marginBottom: '1.5rem' }}>
-                Step 2: Enter {selectedMethod.name} Details
+        <form onSubmit={handleSubmit} style={styles.formCard}>
+            <h3 style={{ ...styles.label, fontSize: '1.1rem', textAlign: 'center', marginBottom: '1.5rem', color: GREEN_DARK }}>
+                Step 2: Enter {selectedMethod?.name} Details
             </h3>
 
             {message.text && (
-                <div style={commonStyles.messageBox(message.type)}>
+                <div style={styles.messageBox(message.type)}>
                 {message.type === 'success' ? '✅' : '❌'} {message.text}
                 </div>
             )}
 
             {/* Amount */}
-            <div style={commonStyles.formGroup}>
-                <label style={commonStyles.label} htmlFor="amount">Withdrawal Amount (Rs)</label>
+            <div style={styles.formGroup}>
+                <label style={styles.label} htmlFor="amount">Withdrawal Amount (Min 100 PKR)</label>
                 <input
                     id="amount"
                     type="number"
                     name="amount"
                     value={form.amount}
                     onChange={handleChange}
-                    placeholder="Minimum 100 Rs"
+                    placeholder="e.g., 5000"
                     required
                     min="100"
-                    style={commonStyles.input}
+                    style={{...styles.input, ...(!isAmountValid && form.amount ? { borderColor: ERROR_RED, boxShadow: `0 0 0 3px ${ERROR_RED}20` } : {})}}
                 />
             </div>
 
             {/* Bank Name (Only for Bank Transfer) */}
             {form.method === 'BankTransfer' && (
-                <div style={commonStyles.formGroup}>
-                    <label style={commonStyles.label} htmlFor="bank_name">Bank Name</label>
+                <div style={styles.formGroup}>
+                    <label style={styles.label} htmlFor="bank_name">Bank Name</label>
                     <input
                         id="bank_name"
                         type="text"
                         name="bank_name"
                         value={form.bank_name}
                         onChange={handleChange}
-                        placeholder="e.g., Meezan Bank"
+                        placeholder="e.g., HBL, Meezan Bank"
                         required
-                        style={commonStyles.input}
+                        style={styles.input}
                     />
                 </div>
             )}
 
             {/* Account Owner Name */}
-            <div style={commonStyles.formGroup}>
-                <label style={commonStyles.label} htmlFor="account_owner">Account Holder Name (Full Name)</label>
+            <div style={styles.formGroup}>
+                <label style={styles.label} htmlFor="account_owner">Account Holder Name (Full Name)</label>
                 <input
                     id="account_owner"
                     type="text"
                     name="account_owner"
                     value={form.account_owner}
                     onChange={handleChange}
-                    placeholder="e.g., Samiullah Khan"
+                    placeholder="Your Full Name on the Account"
                     required
-                    style={commonStyles.input}
+                    style={styles.input}
                 />
             </div>
 
             {/* Account/Phone Number */}
-            <div style={commonStyles.formGroup}>
-                <label style={commonStyles.label} htmlFor="bank_account">
-                    {form.method === 'BankTransfer' ? 'Bank Account / IBAN' : `${selectedMethod.name} Phone Number`}
+            <div style={styles.formGroup}>
+                <label style={styles.label} htmlFor="bank_account">
+                    {form.method === 'BankTransfer' ? 'Bank Account / IBAN' : `${selectedMethod?.name} Phone Number`}
                 </label>
                 <input
                     id="bank_account"
@@ -577,35 +737,36 @@ function WithdrawPage() {
                     onChange={handleChange}
                     placeholder={form.method === 'BankTransfer' ? 'PKR1234567890' : '03XXXXXXXXX'}
                     required
-                    style={commonStyles.input}
+                    style={styles.input}
                 />
             </div>
 
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+            <div style={styles.buttonGroup}>
                 <button
                     type="button"
-                    style={{ ...commonStyles.button, backgroundColor: TEXT_DARK_GRAY, flex: 1 }}
+                    style={styles.backBtn}
                     onClick={() => setStep(1)}
                 >
-                    ⬅️ Back
+                    <FaChevronLeft /> Back
                 </button>
 
                 <button
                     type="submit"
                     disabled={loading || !isFormValid}
-                    style={
-                        loading || !isFormValid
-                        ? { ...commonStyles.button, ...commonStyles.buttonDisabled, flex: 1 } 
-                        : { ...commonStyles.button, flex: 1 }
-                    }
+                    style={{
+                        ...styles.button,
+                        ...(loading || !isFormValid ? styles.buttonDisabled : {}),
+                        width: isMobile ? '100%' : 'auto',
+                        minWidth: '250px'
+                    }}
                 >
                     {loading ? (
                         <>
-                            <div style={{ width: '20px', height: '20px', border: '2px solid #fff3', borderTop: '2px solid #FFF', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                            <FaSpinner className="animate-spin" />
                             Processing...
                         </>
                     ) : (
-                        `Withdraw Rs${form.amount || '...'}`
+                        `Withdraw PKR ${parseFloat(form.amount || 0).toLocaleString()}`
                     )}
                 </button>
             </div>
@@ -615,62 +776,205 @@ function WithdrawPage() {
 
   // --- STEP 3: Success Screen ---
   const renderStep3 = () => (
-    <div style={commonStyles.successScreen}>
-        <div style={commonStyles.successIcon}>🎉</div>
-        <h2 style={commonStyles.successTitle}>Congratulations!</h2>
-        <p style={commonStyles.successMessage}>
-            Your withdrawal request for **Rs{parseFloat(form.amount).toLocaleString()}** has been submitted successfully.
+    <div style={styles.successScreen}>
+        <div style={styles.successIcon}>🎉</div>
+        <h2 style={styles.successTitle}>Withdrawal Submitted!</h2>
+        <p style={styles.successMessage}>
+            Your request for <strong>PKR {parseFloat(form.amount).toLocaleString()}</strong> via <strong>{form.method}</strong> has been recorded.
             <br />
-            You should receive your amount within **24 hours**.
+            It will be processed within <strong>24 hours</strong>. Check history for updates.
         </p>
-        <button
-            style={{...commonStyles.button, width: '70%', margin: '0 auto'}}
-            onClick={() => {
-                setStep(1); // Start a new withdrawal
-                setForm({
-                    amount: '',
-                    method: 'BankTransfer',
-                    bank_name: '',
-                    account_owner: '',
-                    bank_account: ''
-                });
-                setMessage({ text: '', type: '' });
-            }}
+        <div style={styles.buttonGroup}>
+            <button
+                style={{...styles.button, background: INPUT_BG, color: GREEN_PRIMARY, border: `1px solid ${GREEN_PRIMARY}50`, boxShadow: 'none'}}
+                onClick={() => handleNavigation('History')} 
+            >
+                <FaHistory /> View History
+            </button>
+            <button
+                style={styles.button}
+                onClick={() => { setStep(1); setForm({ amount: '', method: 'BankTransfer', bank_name: '', account_owner: '', bank_account: '' }); setMessage({ text: '', type: '' }); }}
+            >
+                Start New
+            </button>
+        </div>
+    </div>
+  );
+  
+  // --- HISTORY RENDER FUNCTION ---
+  const renderHistory = () => (
+    <div style={styles.historyContainer}>
+      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexDirection: isMobile ? 'column' : 'row', gap: '1rem'}}>
+        <div>
+          <h2 style={{...styles.pageTitle, marginTop: '0', textAlign: 'left', marginBottom: '0.5rem'}}>Withdrawal History</h2>
+          <p style={{...styles.pageSubtitle, textAlign: 'left', marginBottom: '0'}}>Track and manage your withdrawal requests</p>
+        </div>
+        <button 
+            onClick={() => handleNavigation('Withdraw')} 
+            style={{...styles.button, margin: 0, background: FORM_CARD_BG, color: GREEN_PRIMARY, border: `2px solid ${GREEN_PRIMARY}`, boxShadow: 'none'}}
         >
-            Start New Withdrawal
+            <FaArrowLeft style={{transform: 'rotate(0deg)'}} /> New Withdrawal
         </button>
-        <button
-            style={{...commonStyles.button, width: '70%', margin: '1rem auto 0', backgroundColor: TEXT_DARK_GRAY}}
-            onClick={() => navigate('/deposit-history')}
-        >
-            View History
-        </button>
+      </div>
+
+      {/* Statistics Cards */}
+      <div style={styles.statsGrid}>
+        <div style={styles.statCard}>
+          <div style={styles.statValue}>{stats.total}</div>
+          <div style={styles.statLabel}>Total Requests</div>
+        </div>
+        <div style={styles.statCard}>
+          <div style={{...styles.statValue, color: SUCCESS_GREEN}}>{stats.successful}</div>
+          <div style={styles.statLabel}>Successful</div>
+        </div>
+        <div style={styles.statCard}>
+          <div style={{...styles.statValue, color: WARNING_AMBER}}>{stats.pending}</div>
+          <div style={styles.statLabel}>Pending</div>
+        </div>
+        <div style={styles.statCard}>
+          <div style={styles.statValue}>PKR {stats.totalAmount.toLocaleString()}</div>
+          <div style={styles.statLabel}>Total Withdrawn</div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div style={styles.filtersContainer}>
+        <div style={styles.filterRow}>
+          <div style={{position: 'relative', flex: 1}}>
+            <FaSearch style={{position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: TEXT_GRAY}} />
+            <input
+              type="text"
+              placeholder="Search by method, account, or amount..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{...styles.searchInput, paddingLeft: '2.5rem'}}
+            />
+          </div>
+          <select 
+            value={statusFilter} 
+            onChange={(e) => setStatusFilter(e.target.value)}
+            style={styles.filterSelect}
+          >
+            <option value="All">All Status</option>
+            <option value="Pending">Pending</option>
+            <option value="Successful">Successful</option>
+            <option value="Failed">Failed</option>
+          </select>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{textAlign: 'center', padding: '3rem', color: TEXT_GRAY}}>
+          <FaSpinner className="animate-spin" style={{fontSize: '2rem', color: GREEN_PRIMARY}} />
+          <p>Loading Withdrawal History...</p>
+        </div>
+      ) : filteredHistory.length === 0 ? (
+        <div style={{...styles.formCard, ...styles.emptyState}}>
+          <FaHistory style={{fontSize: '3rem', color: TEXT_DARK_GRAY, marginBottom: '1rem'}} />
+          <h3 style={{color: TEXT_DARK, marginBottom: '0.5rem'}}>No Withdrawals Found</h3>
+          <p style={{color: TEXT_GRAY, marginBottom: '1.5rem'}}>
+            {history.length === 0 ? "You haven't made any withdrawals yet." : "No withdrawals match your search criteria."}
+          </p>
+          <button 
+            onClick={() => handleNavigation('Withdraw')} 
+            style={styles.button}
+          >
+            Make Your First Withdrawal
+          </button>
+        </div>
+      ) : (
+        <div style={styles.historyTable}>
+          {/* Desktop Table Header */}
+          {!isMobile && (
+            <div style={styles.tableHeader}>
+              <div>Amount</div>
+              <div>Method</div>
+              <div>Account Details</div>
+              <div>Date</div>
+              <div>Status</div>
+            </div>
+          )}
+
+          {/* History Items */}
+          {filteredHistory.map((item) => {
+            const StatusIcon = item.status === 'Successful' ? FaCheckCircle : 
+                             item.status === 'Pending' ? FaClock : FaTimesCircle;
+            
+            return isMobile ? (
+              // Mobile Card View
+              <div key={item.id} style={styles.mobileCard}>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem'}}>
+                  <div style={{fontSize: '1.3rem', fontWeight: '800', color: TEXT_DARK}}>
+                    PKR {parseFloat(item.amount).toLocaleString()}
+                  </div>
+                  <div style={styles.statusBadge(item.status)}>
+                    <StatusIcon />
+                    {item.status}
+                  </div>
+                </div>
+                
+                <div style={{marginBottom: '0.5rem'}}>
+                  <strong>Method:</strong> {item.method}
+                </div>
+                <div style={{marginBottom: '0.5rem'}}>
+                  <strong>Account:</strong> {item.bank_account}
+                </div>
+                {item.bank_name && (
+                  <div style={{marginBottom: '0.5rem'}}>
+                    <strong>Bank:</strong> {item.bank_name}
+                  </div>
+                )}
+                <div style={{color: TEXT_GRAY, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                  <FaCalendarAlt />
+                  {new Date(item.created_at).toLocaleDateString()} at {new Date(item.created_at).toLocaleTimeString()}
+                </div>
+              </div>
+            ) : (
+              // Desktop Table Row
+              <div key={item.id} style={styles.tableRow}>
+                <div style={{fontSize: '1.1rem', fontWeight: '700', color: TEXT_DARK}}>
+                  PKR {parseFloat(item.amount).toLocaleString()}
+                </div>
+                <div style={{color: TEXT_DARK, fontWeight: '500'}}>{item.method}</div>
+                <div>
+                  <div style={{fontWeight: '500'}}>{item.bank_account}</div>
+                  {item.bank_name && (
+                    <div style={{fontSize: '0.8rem', color: TEXT_GRAY}}>{item.bank_name}</div>
+                  )}
+                </div>
+                <div style={{color: TEXT_GRAY, fontSize: '0.9rem'}}>
+                  {new Date(item.created_at).toLocaleDateString()}
+                  <br />
+                  {new Date(item.created_at).toLocaleTimeString()}
+                </div>
+                <div style={styles.statusBadge(item.status)}>
+                  <StatusIcon />
+                  {item.status}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 
-
   if (authLoading) {
-    // ... Loading State
     return (
-        <div style={commonStyles.container}>
-            <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+        <div style={styles.container}>
+            <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } body { margin: 0; background: ${BG_LIGHT}; }`}</style>
             <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '20px' }}>
-                <div style={{ width: '50px', height: '50px', border: `3px solid ${TEXT_DARK_GRAY}30`, borderTop: `3px solid ${PURPLE_PRIMARY}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                <div style={{ width: '50px', height: '50px', border: `3px solid ${TEXT_DARK_GRAY}30`, borderTop: `3px solid ${GREEN_PRIMARY}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
                 <div style={{ color: TEXT_GRAY, fontSize: '16px', fontWeight: '500' }}>Authenticating...</div>
             </div>
         </div>
     );
   }
 
-  // --- Main Render ---
   return (
-    <div style={commonStyles.container}>
+    <Layout activeTab={activeTab === 'Withdraw' ? 'deposit' : 'withdraw-history'}> 
       <style>
         {`
-          @keyframes slideDown {
-            from { opacity: 0; transform: translateY(-30px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
           @keyframes slideUp {
             from { opacity: 0; transform: translateY(30px); }
             to { opacity: 1; transform: translateY(0); }
@@ -681,83 +985,70 @@ function WithdrawPage() {
           }
           body {
             margin: 0;
-            background: ${DARK_BG};
+            background: ${BG_LIGHT};
+            overflow-x: hidden; 
+            max-width: 100vw;
+          }
+          .animate-spin {
+             animation: spin 1s linear infinite;
+          }
+          .plan-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(4, 120, 87, 0.15);
           }
         `}
       </style>
+      
+      <main style={styles.mainContent}> 
+        {activeTab === 'History' ? (
+          renderHistory()
+        ) : (
+          <>
+            <h2 style={styles.pageTitle}>
+              {step === 1 ? "New Withdrawal Request" : 
+               step === 2 ? "Enter Withdrawal Details" : 
+               "Withdrawal Complete"}
+            </h2>
+            <p style={styles.pageSubtitle}>
+              {step === 1 ? "Choose a secure method to receive your funds." : 
+               step === 2 ? "Enter the details and amount for withdrawal." : 
+               "Your request is being processed."}
+            </p>
 
-      {/* Header */}
-      <div style={commonStyles.header}>
-        <div style={commonStyles.headerLeft}>
-          <div style={commonStyles.welcomeText}>As-salamu alaykum,</div>
-          <div style={commonStyles.userName}>
-            {userData ? (userData.first_name || userData.username || 'User') : 'User'}
-          </div>
-        </div>
-        <div 
-          style={commonStyles.notificationBtn}
-          onClick={handleLogout}
-        >
-          <span>🚪</span>
-        </div>
-      </div>
+            {/* History Button */}
+            {activeTab === 'Withdraw' && step !== 3 && (
+                <button 
+                    onClick={() => handleNavigation('History')} 
+                    style={styles.historyButton}
+                >
+                    <FaHistory /> View Withdrawal History
+                </button>
+            )}
+            
+            {/* Step Indicator */}
+            {activeTab === 'Withdraw' && step !== 3 && (
+                <div style={styles.stepContainer}>
+                    <div style={styles.stepItem(step === 1, step > 1)} onClick={() => step > 1 && setStep(1)}>
+                        <div style={styles.stepCircle(step === 1, step > 1)}>{step > 1 ? '✅' : '1'}</div>
+                        Method
+                        <div style={{ ...styles.stepLine, ...(step > 1 && styles.stepLineActive(step > 2)) }}></div>
+                    </div>
 
-      {/* Main Content */}
-      <div style={commonStyles.mainContent}>
-        <h1 style={commonStyles.pageTitle}>Withdraw Funds</h1>
-        <p style={commonStyles.pageSubtitle}>Safe and quick withdrawal to your account.</p>
-
-        {/* Step Indicator */}
-        {step !== 3 && (
-            <div style={commonStyles.stepContainer}>
-                {/* Step 1: Method */}
-                <div style={commonStyles.stepItem(step === 1, step > 1)} onClick={() => step > 1 && setStep(1)}>
-                    <div style={commonStyles.stepCircle(step === 1, step > 1)}>{step > 1 ? '✅' : '1'}</div>
-                    Method
-                    {/* Line to Step 2 */}
-                    <div style={{ ...commonStyles.stepLine, ...(step > 1 && commonStyles.stepLineActive(step > 2)) }}></div>
+                    <div style={{...styles.stepItem(step === 2, step > 2), cursor: step < 2 ? 'not-allowed' : 'pointer'}} onClick={() => step > 2 ? setStep(2) : (step === 2 ? null : setStep(1))}>
+                        <div style={styles.stepCircle(step === 2, step > 2)}>{step > 2 ? '✅' : '2'}</div>
+                        Details
+                    </div>
                 </div>
+            )}
 
-                {/* Step 2: Details */}
-                <div style={commonStyles.stepItem(step === 2, step > 2)}>
-                    <div style={commonStyles.stepCircle(step === 2, step > 2)}>{step > 2 ? '✅' : '2'}</div>
-                    Details
-                </div>
-            </div>
+            {/* Main Content */}
+            {step === 1 && renderStep1()}
+            {step === 2 && renderStep2()}
+            {step === 3 && renderStep3()}
+          </>
         )}
-
-
-        {/* Form Card / Step Content */}
-        <div style={step === 3 ? {} : commonStyles.formCard}>
-          {step === 1 && renderStep1()}
-          {step === 2 && renderStep2()}
-          {step === 3 && renderStep3()}
-        </div>
-      </div>
-
-      {/* Bottom Navigation */}
-      <div style={commonStyles.bottomNav}>
-        {[
-          { id: 'home', icon: '🏠', label: 'Home' },
-          { id: 'invest', icon: '💼', label: 'Invest' },
-          { id: 'deposit', icon: '💰', label: 'Withdraw' }, 
-          { id: 'history', icon: '📋', label: 'History' }
-        ].map((nav) => (
-          <div 
-            key={nav.id}
-            style={activeTab === nav.id ? commonStyles.navItemActive : commonStyles.navItem} 
-            onClick={() => handleNavigation(nav.id)}
-          >
-            <div style={activeTab === nav.id ? commonStyles.navIconActive : commonStyles.navIcon}>
-              {nav.icon}
-            </div>
-            <div style={activeTab === nav.id ? commonStyles.navLabelActive : commonStyles.navLabel}>
-              {nav.label}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+      </main>
+    </Layout>
   );
 }
 

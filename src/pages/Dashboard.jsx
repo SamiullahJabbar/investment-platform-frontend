@@ -1,867 +1,749 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-// Assuming the correct path to baseURL.js is this (adjust if needed based on your file structure)
-import BASE_URL, { removeTokens } from '../api/baseURL';
+import Layout from '../components/Layout'; 
+import BASE_URL, { getAccessToken } from '../api/baseURL'; 
+import { FaDollarSign, FaWallet, FaChartBar, FaUsers, FaLock, FaImage, FaHistory, FaArrowUp, FaArrowDown, FaCheckCircle, FaTimesCircle } from 'react-icons/fa'; 
+import { FiLoader } from 'react-icons/fi'; 
 
-// --- Helper Functions ---
-const calculateProgress = (startDateStr, endDateStr) => {
-    try {
-        const start = new Date(startDateStr);
-        const end = new Date(endDateStr);
-        const now = new Date();
+// --- COLOR CONSTANTS ---
+const GREEN_PRIMARY = '#0a520d';
+const GREEN_DARK = '#073c09';      
+const GREEN_LIGHT = '#388E3C';     
+const BG_LIGHT = '#F0F4F8';        
+const FORM_CARD_BG = '#FFFFFF';    
+const INPUT_BG = '#F8FAFC'; 
+const TEXT_DARK = '#1E293B';       
+const TEXT_GRAY = '#64748B';       
+const BORDER_COLOR = '#E2E8F0';    
+const RED_ERROR = '#B91C1C';
+const ORANGE_LOCKED = '#F59E0B';
+const RED_WITHDRAW = '#E53E3E'; 
+const BLUE_HISTORY = '#2563EB';
 
-        // If the plan has not started yet, or is already ended
-        if (now < start) return { progress: 0, daysLeft: Math.ceil((end - now) / (1000 * 60 * 60 * 24)), totalDays: Math.ceil((end - start) / (1000 * 60 * 60 * 24)) };
-        if (now > end) return { progress: 100, daysLeft: 0, totalDays: Math.ceil((end - start) / (1000 * 60 * 60 * 24)) };
-        
-        const totalDuration = end.getTime() - start.getTime();
-        const elapsedDuration = now.getTime() - start.getTime();
-        const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
-        const totalDays = Math.ceil(totalDuration / (1000 * 60 * 60 * 24));
+// --- API Endpoints ---
+const PLANS_ENDPOINT = `${BASE_URL}/transactions/plans/`;
+const WALLET_ENDPOINT = `${BASE_URL}/transactions/wallet/detail/`;
+const INVEST_ENDPOINT = `${BASE_URL}/transactions/invest/`;
 
-        const progress = (elapsedDuration / totalDuration) * 100;
-        
-        return { 
-            progress: Math.min(100, progress), 
-            daysLeft: daysLeft,
-            totalDays: totalDays
-        };
-    } catch (e) {
-        console.error("Progress calculation error:", e);
-        return { progress: 0, daysLeft: 0, totalDays: 0 };
-    }
-};
+// --- CONFIRMATION MODAL COMPONENT ---
+const ConfirmationModal = ({ plan, onCancel, onInvest, isMobile, isSubmitting }) => {
+    const [confirmationText, setConfirmationText] = useState('');
+    const requiredText = 'confirm';
+    const isConfirmationValid = confirmationText.toLowerCase() === requiredText;
 
-// --- Dashboard Component ---
-function DashboardPage() {
-    const navigate = useNavigate();
-    
-    // --- DYNAMIC API STATES ---
-    const [username, setUsername] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [balance, setBalance] = useState(0);
-    const [totalDeposit, setTotalDeposit] = useState(0); 
-    const [totalEarnedProfit, setTotalEarnedProfit] = useState(0); // NEW: Total Earned Profit
-    const [activePlanDetails, setActivePlanDetails] = useState(null); // NEW: Active Plan details
-    const [investmentHistory, setInvestmentHistory] = useState({ active: 0, expired: 0 }); // NEW: Active/Expired Plan Count
-
-    // --- STATIC DUMMY DATA (for remaining cards) ---
-    const [todayProfit] = useState(5600); // Placeholder, needs dedicated API later
-    const [teamMembers] = useState(23); // Placeholder, needs dedicated API later
-    
-    const [activeTab, setActiveTab] = useState('home');
-    const [hoveredCard, setHoveredCard] = useState(null);
-    const [hoveredAction, setHoveredAction] = useState(null);
-
-    // --- COLOR CONSTANTS ---
-    const PURPLE_PRIMARY = '#8B5CF6';
-    const PURPLE_DARK = '#7C3AED';
-    const PURPLE_LIGHT = '#A78BFA';
-    const DARK_BG = '#0F0F23';
-    const FORM_CARD_BG = '#1A1B2F';
-    const TEXT_LIGHT = '#F8FAFC';
-    const TEXT_GRAY = '#94A3B8';
-    const TEXT_DARK_GRAY = '#64748B';
-    const SUCCESS_GREEN = '#10B981';
-    const WARNING_AMBER = '#F59E0B';
-    const ERROR_RED = '#EF4444';
-
-
-    // --- API FUNCTIONS ---
-
-    // 1. Fetch Wallet and Username
-    const fetchWalletDetail = async (token) => {
-        try {
-            const walletResponse = await axios.get(`${BASE_URL}/transactions/wallet/detail/`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            setBalance(parseFloat(walletResponse.data.balance || 0));
-            setUsername(walletResponse.data.username);
-        } catch (error) {
-            console.error('Wallet detail fetch failed:', error.response ? error.response.data : error.message);
-            removeTokens();
-            navigate('/login');
-        }
-    };
-
-    // 2. Fetch Total Deposit
-    const fetchDepositHistory = async (token) => {
-        try {
-            const historyResponse = await axios.get(`${BASE_URL}/transactions/deposit/history/`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (Array.isArray(historyResponse.data)) {
-                const calculatedTotalDeposit = historyResponse.data
-                    .filter(deposit => deposit.status && deposit.status.toLowerCase() === 'approved') 
-                    .reduce((sum, deposit) => sum + parseFloat(deposit.amount || 0), 0);
-                setTotalDeposit(calculatedTotalDeposit);
-            }
-        } catch (error) {
-            console.error('Deposit history fetch failed:', error.response ? error.response.data : error.message);
-        }
-    };
-
-    // 3. Fetch Total Earned Profit (NEW API)
-    const fetchProfitHistory = async (token) => {
-        try {
-            const profitResponse = await axios.get(`${BASE_URL}/transactions/profit/history/`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (Array.isArray(profitResponse.data)) {
-                // Calculate the sum of 'total_earned' from all profit history items
-                const totalEarned = profitResponse.data
-                    .reduce((sum, item) => sum + parseFloat(item.total_earned || 0), 0);
-                setTotalEarnedProfit(totalEarned);
-            }
-        } catch (error) {
-            console.error('Profit history fetch failed:', error.response ? error.response.data : error.message);
-        }
-    };
-    
-    // 4. Fetch Active Plan and Plan History Count (NEW API)
-    const fetchPlanHistory = async (token) => {
-        try {
-            const plansResponse = await axios.get(`${BASE_URL}/transactions/plans/history/`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-
-            if (Array.isArray(plansResponse.data)) {
-                const activePlan = plansResponse.data.find(plan => plan.status && plan.status.toLowerCase() === 'active');
-                
-                // Set Active Plan Details
-                if (activePlan) {
-                    setActivePlanDetails(activePlan);
-                } else {
-                    setActivePlanDetails(null);
-                }
-
-                // Calculate Plan Counts
-                const activeCount = plansResponse.data.filter(plan => plan.status && plan.status.toLowerCase() === 'active').length;
-                const expiredCount = plansResponse.data.filter(plan => plan.status && plan.status.toLowerCase() === 'expired').length;
-                
-                setInvestmentHistory({ active: activeCount, expired: expiredCount });
-            }
-        } catch (error) {
-            console.error('Plan history fetch failed:', error.response ? error.response.data : error.message);
-        }
-    };
-
-
-    // --- EFFECT HOOKS ---
-    useEffect(() => {
-        const checkAuthAndFetchData = async () => {
-            const token = sessionStorage.getItem('accessToken');
-            if (!token) {
-                navigate('/login');
-                setLoading(false); 
-                return;
-            }
-
-            // Call all required APIs concurrently
-            await Promise.all([
-                fetchWalletDetail(token),
-                fetchDepositHistory(token),
-                fetchProfitHistory(token), // NEW
-                fetchPlanHistory(token)    // NEW
-            ]);
-
-            setLoading(false);
-        };
-
-        checkAuthAndFetchData();
-    }, [navigate]);
-
-    // --- HANDLERS ---
-    const handleLogout = () => {
-        removeTokens();
-        navigate('/login');
-    };
-
-    // Navigate function for Bottom Nav & Quick Actions
-    const navigateTo = (route, tabId) => {
-        setActiveTab(tabId);
-        navigate(route);
-    };
-
-    // --- STYLES (Your original styles are placed here for completeness) ---
-    const styles = {
-        // 1. Container
-        container: {
-        minHeight: '100vh',
-        background: DARK_BG,
-        color: TEXT_LIGHT,
-        fontFamily: "'Inter', 'Segoe UI', 'Arial', sans-serif",
-        position: 'relative',
-        paddingBottom: '90px',
-        overflowX: 'hidden'
-        },
-
-        // 2. Header with User Info
-        header: {
-        padding: '20px 16px 16px',
-        background: 'rgba(26, 27, 47, 0.95)',
-        backdropFilter: 'blur(20px)',
-        borderBottom: `1px solid ${TEXT_DARK_GRAY}30`,
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        animation: 'slideDown 0.6s ease-out'
-        },
-        headerLeft: {
-        flex: 1,
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px'
-        },
-        homeLogo: {
-        fontSize: '24px',
-        color: PURPLE_PRIMARY,
-        fontWeight: '800',
-        padding: '8px 10px',
-        borderRadius: '12px',
-        background: 'rgba(139, 92, 246, 0.1)',
-        cursor: 'pointer',
-        lineHeight: 1,
-        border: `1px solid ${PURPLE_PRIMARY}30`
-        },
-        userInfo: {
-        flex: 1
-        },
-        welcomeText: {
-        fontSize: '14px',
-        color: TEXT_GRAY,
-        marginBottom: '4px'
-        },
-        userName: {
-        fontSize: '20px',
-        fontWeight: '700',
-        background: `linear-gradient(135deg, ${TEXT_LIGHT}, ${PURPLE_LIGHT})`,
-        backgroundClip: 'text',
-        WebkitBackgroundClip: 'text',
-        WebkitTextFillColor: 'transparent'
-        },
-        notificationBtn: {
-        background: 'rgba(239, 68, 68, 0.2)',
-        border: `1px solid rgba(239, 68, 68, 0.3)`,
-        borderRadius: '50%',
-        width: '44px',
-        height: '44px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: 'pointer',
-        position: 'relative',
-        transition: 'all 0.3s ease'
-        },
-        notificationDot: {
-        position: 'absolute',
-        top: '10px',
-        right: '10px',
-        width: '8px',
-        height: '8px',
-        background: ERROR_RED,
-        borderRadius: '50%'
-        },
-
-        // 3. Balance Card
-        balanceCard: {
-        background: `linear-gradient(135deg, ${PURPLE_PRIMARY} 0%, ${PURPLE_DARK} 100%)`,
-        margin: '16px',
-        padding: '28px 24px',
-        borderRadius: '24px',
-        boxShadow: `0 20px 40px ${PURPLE_PRIMARY}30`,
-        position: 'relative',
-        overflow: 'hidden',
-        animation: 'slideUp 0.8s ease-out 0.2s both'
-        },
-        balanceLabel: {
-        fontSize: '14px',
-        color: 'rgba(255, 255, 255, 0.8)',
-        marginBottom: '8px',
-        fontWeight: '500'
-        },
-        balanceAmount: {
-        fontSize: '38px',
-        fontWeight: '800',
-        color: TEXT_LIGHT,
-        marginBottom: '16px',
-        letterSpacing: '0.5px',
-        textShadow: '0 2px 10px rgba(0, 0, 0, 0.3)'
-        },
-        profitContainer: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-        },
-        profitBadge: {
-        fontSize: '15px',
-        color: SUCCESS_GREEN,
-        fontWeight: '600',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        background: 'rgba(16, 185, 129, 0.15)',
-        padding: '8px 16px',
-        borderRadius: '20px',
-        border: `1px solid ${SUCCESS_GREEN}30`
-        },
-        currencyText: {
-        fontSize: '12px',
-        color: 'rgba(255, 255, 255, 0.7)',
-        fontWeight: '500'
-        },
-
-        // 4. Stats Grid
-        statsGrid: {
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '14px',
-        padding: '0 16px',
-        marginBottom: '28px',
-        animation: 'slideUp 0.8s ease-out 0.4s both'
-        },
-        statCard: {
-        background: FORM_CARD_BG,
-        padding: '20px 16px',
-        borderRadius: '18px',
-        border: `1px solid ${TEXT_DARK_GRAY}30`,
-        backdropFilter: 'blur(10px)',
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        cursor: 'pointer'
-        },
-        statCardHover: {
-        transform: 'translateY(-4px)',
-        borderColor: PURPLE_PRIMARY,
-        boxShadow: `0 12px 30px ${PURPLE_PRIMARY}20`
-        },
-        statLabel: {
-        fontSize: '13px',
-        color: TEXT_GRAY,
-        marginBottom: '10px',
-        fontWeight: '500'
-        },
-        statValue: {
-        fontSize: '22px',
-        fontWeight: '700',
-        color: TEXT_LIGHT,
-        display: 'flex',
-        alignItems: 'baseline',
-        gap: '4px',
-        justifyContent: 'space-between' 
-        },
-        currencySymbol: {
-        fontSize: '14px',
-        color: WARNING_AMBER,
-        fontWeight: '600'
-        },
-
-        // 5. Quick Actions
-        quickActions: {
-        padding: '0 16px',
-        marginBottom: '28px',
-        animation: 'slideUp 0.8s ease-out 0.6s both'
-        },
-        sectionTitle: {
-        fontSize: '18px',
-        fontWeight: '600',
-        color: TEXT_LIGHT,
-        marginBottom: '18px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-        },
-        viewAllBtn: {
-        fontSize: '12px',
-        color: PURPLE_PRIMARY,
-        fontWeight: '600',
-        cursor: 'pointer',
-        transition: 'all 0.3s ease',
-        padding: '6px 12px',
-        borderRadius: '8px'
-        },
-        actionsGrid: {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: '20px', 
-        maxWidth: '500px', 
-        margin: '0 auto', 
-        padding: '0 10px', 
-        },
-        actionButton: {
-        background: FORM_CARD_BG,
-        border: `1px solid ${TEXT_DARK_GRAY}30`,
-        borderRadius: '16px',
-        padding: '20px 8px',
-        textAlign: 'center',
-        cursor: 'pointer',
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
-        },
-        actionButtonHover: {
-        transform: 'translateY(-4px)',
-        borderColor: PURPLE_PRIMARY,
-        boxShadow: `0 12px 30px ${PURPLE_PRIMARY}20`,
-        background: `linear-gradient(135deg, ${FORM_CARD_BG}, rgba(139, 92, 246, 0.1))`
-        },
-        actionIcon: {
-        fontSize: '28px',
-        background: 'rgba(139, 92, 246, 0.1)',
-        width: '54px',
-        height: '54px',
-        borderRadius: '16px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        margin: '0 auto 14px',
-        border: `1px solid ${PURPLE_PRIMARY}30`,
-        transition: 'all 0.3s ease'
-        },
-        actionIconHover: {
-        transform: 'scale(1.1)',
-        background: 'rgba(139, 92, 246, 0.2)'
-        },
-        actionLabel: {
-        fontSize: '12px',
-        color: TEXT_LIGHT,
-        fontWeight: '600'
-        },
-
-        // 6. Active Plan Card
-        planCard: {
-        background: FORM_CARD_BG,
-        margin: '16px',
-        padding: '24px',
-        borderRadius: '20px',
-        border: `1px solid ${TEXT_DARK_GRAY}30`,
-        backdropFilter: 'blur(10px)',
-        boxShadow: '0 12px 30px rgba(0, 0, 0, 0.2)',
-        animation: 'slideUp 0.8s ease-out 0.8s both'
-        },
-        planHeader: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '18px'
-        },
-        planTitle: {
-        fontSize: '17px',
-        fontWeight: '600',
-        color: TEXT_LIGHT
-        },
-        planStatus: {
-        background: `linear-gradient(135deg, ${SUCCESS_GREEN}, #22d3ee)`,
-        color: TEXT_LIGHT,
-        padding: '8px 16px',
-        borderRadius: '20px',
-        fontSize: '12px',
-        fontWeight: '700',
-        boxShadow: `0 6px 20px ${SUCCESS_GREEN}30`
-        },
-        planDetails: {
-        fontSize: '15px',
-        color: TEXT_GRAY,
-        marginBottom: '22px',
-        fontWeight: '500'
-        },
-        progressContainer: {
-        marginBottom: '14px'
-        },
-        progressInfo: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '10px',
-        fontSize: '13px',
-        color: TEXT_GRAY
-        },
-        progressBar: {
-        background: 'rgba(255, 255, 255, 0.1)',
-        borderRadius: '12px',
-        height: '8px',
-        overflow: 'hidden'
-        },
-        progressFill: (progress) => ({
-        background: `linear-gradient(90deg, ${PURPLE_PRIMARY}, ${PURPLE_DARK})`,
-        height: '100%',
-        width: `${progress}%`,
-        borderRadius: '12px',
-        boxShadow: `0 2px 12px ${PURPLE_PRIMARY}40`,
-        transition: 'width 1s ease-out' // Changed from animation to transition
-        }),
-
-        // 7. Recent Activity
-        recentActivity: {
-        padding: '0 16px',
-        marginBottom: '24px',
-        animation: 'slideUp 0.8s ease-out 1s both'
-        },
-        emptyState: {
-        background: FORM_CARD_BG,
-        textAlign: 'center',
-        padding: '40px 20px',
-        borderRadius: '18px',
-        border: `1px solid ${TEXT_DARK_GRAY}30`,
-        backdropFilter: 'blur(10px)'
-        },
-        emptyIcon: {
-        fontSize: '52px',
-        opacity: '0.3',
-        marginBottom: '16px'
-        },
-
-        // 8. Bottom Navigation
-        bottomNav: {
+    const modalStyle = {
         position: 'fixed',
-        bottom: '0',
-        left: '0',
-        right: '0',
-        height: '85px',
-        background: 'rgba(26, 27, 47, 0.95)',
-        backdropFilter: 'blur(25px)',
-        borderTop: `1px solid ${TEXT_DARK_GRAY}30`,
-        display: 'flex',
-        justifyContent: 'space-around',
-        alignItems: 'center',
-        padding: '12px 0',
-        boxShadow: '0 -8px 30px rgba(0, 0, 0, 0.3)',
-        zIndex: 1000
-        },
-        navItem: {
-        textAlign: 'center',
-        cursor: 'pointer',
-        padding: '10px 14px',
-        borderRadius: '16px',
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        flex: 1,
-        margin: '0 4px', 
-        maxWidth: '100px' 
-        },
-        navItemActive: {
-        background: 'rgba(139, 92, 246, 0.2)',
-        border: `1px solid ${PURPLE_PRIMARY}40`,
-        transform: 'translateY(-6px)'
-        },
-        navIcon: {
-        fontSize: '24px',
-        marginBottom: '6px',
-        transition: 'all 0.3s ease',
-        color: TEXT_GRAY, 
-        },
-        navIconActive: {
-        transform: 'scale(1.15)',
-        color: PURPLE_PRIMARY, 
-        },
-        navLabel: {
-        fontSize: '11px',
-        fontWeight: '500',
-        color: TEXT_GRAY,
-        transition: 'all 0.3s ease'
-        }
-        ,
-        navLabelActive: {
-        color: PURPLE_PRIMARY,
-        fontWeight: '700'
-        },
-
-        // 9. Loading State
-        loadingContainer: {
-        minHeight: '100vh',
-        background: DARK_BG,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        flexDirection: 'column',
-        gap: '20px'
-        },
-        spinner: {
-        width: '50px',
-        height: '50px',
-        border: `3px solid ${TEXT_DARK_GRAY}30`,
-        borderTop: `3px solid ${PURPLE_PRIMARY}`,
-        borderRadius: '50%',
-        animation: 'spin 1s linear infinite'
-        },
-        loadingText: {
-        color: TEXT_GRAY,
-        fontSize: '16px',
-        fontWeight: '500'
-        },
-        // --- NEW STYLE FOR VIEW MORE BUTTON ---
-        viewMoreLink: {
-            fontSize: '12px',
-            color: PURPLE_LIGHT,
-            fontWeight: '600',
-            padding: '4px 8px',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            background: 'rgba(167, 139, 250, 0.1)',
-            transition: 'all 0.2s ease',
-            whiteSpace: 'nowrap',
-        },
-        planHistoryDetails: {
-            fontSize: '14px',
-            color: TEXT_GRAY,
-            fontWeight: '500',
-            marginTop: '8px',
-            lineHeight: '1.4',
-        }
+        zIndex: 1000,
+        padding: isMobile ? '1rem' : '2rem',
     };
-    // --- END STYLES ---
 
-
-    // Calculate active plan progress for rendering
-    const planProgress = activePlanDetails 
-        ? calculateProgress(activePlanDetails.start_date, activePlanDetails.end_date) 
-        : { progress: 0, daysLeft: 0, totalDays: 0 };
-
-
-    // RENDER LOGIC
-    const displayUserName = username || 'Guest';
-
-    const activePlanInfo = activePlanDetails 
-        ? `${activePlanDetails.title} - ₨${parseFloat(activePlanDetails.amount).toLocaleString()}`
-        : 'No Active Plan';
-
-    // Stat Card Data Array (UPDATED)
-    const statCardsData = [
-        { 
-            label: 'Total Deposit', 
-            value: totalDeposit, 
-            currency: true, 
-            onClick: () => navigateTo('/DepositHistory', 'deposit'),
-            showViewMore: true 
-        },
-        // RENAMED AND UPDATED CARD
-        { 
-            label: 'Plan History', 
-            value: investmentHistory.active + investmentHistory.expired, 
-            suffix: `(${investmentHistory.active} active)`,
-            details: `Active: ${investmentHistory.active}, Expired: ${investmentHistory.expired}`,
-            onClick: () => navigateTo('/PlanHistory', 'invest'),
-            showViewMore: true 
-        },
-        { label: 'Team Members', value: teamMembers, suffix: 'people' },
-        // UPDATED CARD
-        { 
-            label: 'Total Profit', 
-            value: totalEarnedProfit, 
-            currency: true, 
-            // onClick: () => navigateTo('/profit-history', 'home'),
-            showViewMore: true 
-        }
-    ];
+    const contentStyle = {
+        background: FORM_CARD_BG,
+        borderRadius: '16px',
+        padding: isMobile ? '1.5rem' : '2.5rem',
+        maxWidth: isMobile ? '95%' : '450px',
+        width: '100%',
+        boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)',
+        position: 'relative',
+        animation: 'slideDown 0.3s ease-out',
+    };
+    
+    const iconStyle = {
+        position: 'absolute',
+        top: isMobile ? '1rem' : '1.5rem',
+        right: isMobile ? '1rem' : '1.5rem',
+        fontSize: isMobile ? '1.2rem' : '1.5rem',
+        color: TEXT_GRAY,
+        cursor: 'pointer',
+        transition: 'color 0.2s',
+        zIndex: 10,
+    };
+    
+    const buttonStyle = {
+        background: isConfirmationValid && !isSubmitting
+            ? `linear-gradient(135deg, ${GREEN_PRIMARY} 0%, ${GREEN_DARK} 100%)`
+            : TEXT_GRAY,
+        color: 'white',
+        border: 'none',
+        padding: '0.8rem 1.5rem',
+        borderRadius: '10px',
+        fontSize: '1rem',
+        fontWeight: '700',
+        cursor: isConfirmationValid && !isSubmitting ? 'pointer' : 'not-allowed',
+        width: '100%',
+        marginTop: '1.5rem',
+        transition: 'background 0.3s',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: '0.5rem',
+    };
 
     return (
-        <div style={styles.container}>
-            <style>{`/* Global CSS Animations defined in the prompt */`}</style>
-            
-            {/* Header */}
-            <div style={styles.header}>
-                <div style={styles.headerLeft}>
-                    <div 
-                        style={styles.homeLogo}
-                        onClick={() => navigateTo('/', 'home')}
-                    >
-                        ₿
+        <div style={modalStyle}>
+            <style>
+                {`
+                @keyframes slideDown {
+                    from { opacity: 0; transform: translateY(-30px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                `}
+            </style>
+            <div style={contentStyle}>
+                <FaTimesCircle style={iconStyle} onClick={onCancel} />
+                
+                <h3 style={{ 
+                    fontSize: isMobile ? '1.2rem' : '1.6rem', 
+                    fontWeight: '800', 
+                    color: GREEN_DARK, 
+                    marginBottom: '1rem',
+                    textAlign: 'center',
+                }}>
+                    Confirm Investment
+                </h3>
+
+                <p style={{ color: TEXT_DARK, textAlign: 'center', marginBottom: '1.5rem', fontSize: isMobile ? '0.9rem' : '1rem' }}>
+                    Are you ready to invest in the **{plan.title}** plan?
+                </p>
+
+                <div style={{ padding: '1rem', border: `1px solid ${BORDER_COLOR}`, borderRadius: '10px', background: INPUT_BG, marginBottom: '1.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <span style={{ color: TEXT_GRAY }}>Plan Amount:</span>
+                        <span style={{ fontWeight: '700', color: GREEN_PRIMARY }}>PKR {parseFloat(plan.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                     </div>
-                    <div style={styles.userInfo}>
-                        <div style={styles.welcomeText}>As-salamu alaykum,</div>
-                        <div style={styles.userName}>
-                            {displayUserName}
-                        </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: TEXT_GRAY }}>Total Return:</span>
+                        <span style={{ fontWeight: '700', color: GREEN_DARK }}>PKR {parseFloat(plan.total_profit).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                     </div>
                 </div>
-                <div
-                    style={styles.notificationBtn}
-                    className="btn-hover"
-                    onClick={() => navigate('/notifications')} 
+
+                <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', fontSize: isMobile ? '0.8rem' : '0.9rem', color: TEXT_DARK, marginBottom: '0.5rem', fontWeight: '600' }}>
+                        Type "**{requiredText}**" below to proceed:
+                    </label>
+                    <input
+                        type="text"
+                        value={confirmationText}
+                        onChange={(e) => setConfirmationText(e.target.value)}
+                        placeholder={`Type "${requiredText}"`}
+                        style={{
+                            width: '100%',
+                            padding: '0.8rem',
+                            border: `2px solid ${isConfirmationValid ? GREEN_PRIMARY : BORDER_COLOR}`,
+                            borderRadius: '8px',
+                            backgroundColor: FORM_CARD_BG,
+                            fontSize: '1rem',
+                            outline: 'none',
+                        }}
+                        disabled={isSubmitting}
+                    />
+                </div>
+
+                <button 
+                    style={buttonStyle} 
+                    onClick={() => isConfirmationValid && onInvest()} 
+                    disabled={!isConfirmationValid || isSubmitting}
                 >
-                    <span>🚪</span> 
-                </div>
-            </div>
-
-            {/* Balance Card */}
-            <div style={styles.balanceCard}>
-                <div style={styles.balanceLabel}>Total Balance</div>
-                <div style={styles.balanceAmount}>
-                    ₨{balance != null ? balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
-                </div>
-                <div style={styles.profitContainer}>
-                    <div style={styles.profitBadge}>
-                        <span>📈</span> Today: +₨{todayProfit.toLocaleString()}
-                    </div>
-                    <div style={styles.currencyText}>PKR • Pakistani Rupee</div>
-                </div>
-            </div>
-
-            {/* Stats Grid */}
-            <div style={styles.statsGrid}>
-                {statCardsData.map((stat, index) => (
-                    <div
-                        key={index}
-                        onClick={stat.onClick || null} 
-                        style={
-                            hoveredCard === index
-                                ? { ...styles.statCard, ...styles.statCardHover }
-                                : styles.statCard
-                        }
-                        onMouseEnter={() => setHoveredCard(index)}
-                        onMouseLeave={() => setHoveredCard(null)}
-                    >
-                        <div style={styles.statLabel}>{stat.label}</div>
-                        <div style={styles.statValue}>
-                            <span style={{display: 'flex', alignItems: 'baseline', gap: '4px'}}>
-                                {stat.currency && <span style={styles.currencySymbol}>₨</span>}
-                                {stat.value.toLocaleString()}
-                                {stat.suffix && <span style={{fontSize: '14px', color: TEXT_GRAY}}> {stat.suffix}</span>}
-                            </span>
-                            {stat.showViewMore && (
-                                <span 
-                                    style={styles.viewMoreLink} 
-                                    onClick={(e) => {
-                                        e.stopPropagation(); 
-                                        stat.onClick(); 
-                                    }}
-                                >
-                                    View More
-                                </span>
-                            )}
-                        </div>
-                        {stat.details && stat.label === 'Plan History' && (
-                            <div style={styles.planHistoryDetails}>
-                                {stat.details}
-                            </div>
-                        )}
-                    </div>
-                ))}
-            </div>
-
-            {/* Quick Actions */}
-            <div style={styles.quickActions}>
-                <div style={styles.sectionTitle}>
-                    <span>Quick Actions</span>
-                    <span
-                        style={styles.viewAllBtn}
-                        className="btn-hover"
-                        onClick={() => navigate('/')} 
-                    >
-                        View All
-                    </span>
-                </div>
-                <div style={styles.actionsGrid}>
-                    {[
-                        { icon: '💰', label: 'Deposit', route: '/deposit', tabId: 'deposit' },
-                        { icon: '📈', label: 'Invest', route: '/invest', tabId: 'invest' },
-                        { icon: '👥', label: 'Team', route: '/', tabId: 'team' },
-                        { icon: '💸', label: 'Withdraw', route: '/withdraw', tabId: 'withdraw' }
-                    ].map((action, index) => (
-                        <div
-                            key={index}
-                            style={
-                                hoveredAction === index
-                                    ? { ...styles.actionButton, ...styles.actionButtonHover }
-                                    : styles.actionButton
-                            }
-                            onMouseEnter={() => setHoveredAction(index)}
-                            onMouseLeave={() => setHoveredAction(null)}
-                            onClick={() => navigateTo(action.route, action.tabId)} 
-                        >
-                            <div
-                                style={
-                                    hoveredAction === index
-                                        ? { ...styles.actionIcon, ...styles.actionIconHover }
-                                        : styles.actionIcon
-                                }
-                            >
-                                {action.icon}
-                            </div>
-                            <div style={styles.actionLabel}>{action.label}</div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Active Plan (DYNAMIC) */}
-            <div style={styles.planCard}>
-                <div style={styles.planHeader}>
-                    <div style={styles.planTitle}>Active Investment Plan</div>
-                    <div style={styles.planStatus}>
-                        {activePlanDetails ? activePlanDetails.status.toUpperCase() : 'INACTIVE'}
-                    </div>
-                </div>
-                <div style={styles.planDetails}>
-                    {activePlanInfo}
-                </div>
-                {activePlanDetails ? (
-                    <>
-                        <div style={styles.progressContainer}>
-                            <div style={styles.progressInfo}>
-                                <span>Progress</span>
-                                <span>{planProgress.progress.toFixed(1)}% Complete</span>
-                            </div>
-                            <div style={styles.progressBar}>
-                                <div style={styles.progressFill(planProgress.progress)}></div>
-                            </div>
-                        </div>
-                        <div style={{...styles.progressInfo, fontSize: '12px', marginBottom: '0'}}>
-                            <span>Started: {new Date(activePlanDetails.start_date).toLocaleDateString()}</span>
-                            <span>{planProgress.daysLeft} days remaining</span>
-                        </div>
-                    </>
-                ) : (
-                    <div style={styles.emptyState}>
-                        <div style={styles.emptyIcon}>✨</div>
-                        <div style={{...styles.statLabel, color: TEXT_LIGHT, fontSize: '14px', marginBottom: '8px'}}>
-                            No Active Plan Found
-                        </div>
-                        <div style={{fontSize: '12px', color: TEXT_GRAY}}>
-                            Time to check out the <span onClick={() => navigateTo('/invest', 'invest')} style={{color: PURPLE_PRIMARY, cursor: 'pointer', fontWeight: '600'}}>Investment Plans</span>!
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Recent Activity */}
-            <div style={styles.recentActivity}>
-                <div style={styles.sectionTitle}>
-                    <span>Recent Activity</span>
-                    <span style={styles.viewAllBtn}>See All</span>
-                </div>
-                <div style={styles.emptyState}>
-                    <div style={styles.emptyIcon}>📜</div>
-                    <div style={{...styles.statLabel, marginBottom: '8px', fontSize: '14px'}}>
-                        No recent transactions
-                    </div>
-                    <div style={{fontSize: '12px', color: TEXT_GRAY}}>
-                        Your recent activity will appear here
-                    </div>
-                </div>
-            </div>
-
-            {/* Bottom Navigation */}
-            <div style={styles.bottomNav}>
-                {[
-                    { id: 'home', icon: '🏠', label: 'Home', route: '/' },
-                    { id: 'invest', icon: '💼', label: 'Invest', route: '/invest' },
-                    { id: 'team', icon: '👥', label: 'Team', route: '/' },
-                    { id: 'profile', icon: '👤', label: 'Profile', route: '/profile' }
-                ].map((nav) => (
-                    <div
-                        key={nav.id}
-                        style={nav.id === activeTab ? {...styles.navItem, ...styles.navItemActive} : styles.navItem} 
-                        onClick={() => navigateTo(nav.route, nav.id)}
-                    >
-                        <div style={nav.id === activeTab ? styles.navIconActive : styles.navIcon}>
-                            {nav.icon}
-                        </div>
-                        <div style={nav.id === activeTab ? styles.navLabelActive : styles.navLabel}>
-                            {nav.label}
-                        </div>
-                    </div>
-                ))}
+                    {isSubmitting ? <FiLoader className="animate-spin" /> : <FaCheckCircle style={{fontSize: '1rem'}}/>}
+                    {isSubmitting ? 'Finalizing Investment...' : 'Confirm & Invest'}
+                </button>
             </div>
         </div>
     );
+};
+
+
+// --- INVESTMENT PLAN CARD COMPONENT ---
+const PlanCard = ({ plan, onInvestSuccess, isMobile }) => {
+    
+    const [isHovered, setIsHovered] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [showModal, setShowModal] = useState(false); 
+    const [message, setMessage] = useState('');
+    const [messageType, setMessageType] = useState(''); 
+
+    const isLocked = plan.is_locked;
+    const imageUrl = plan.image;
+
+    // Function to handle the actual API call (called from modal)
+    const executeInvest = async () => {
+        if (isLocked || isSubmitting) return;
+        
+        setIsSubmitting(true);
+        setMessage('');
+        setMessageType('');
+
+        const token = getAccessToken();
+        if (!token) {
+            setMessage('Error: User not logged in. Redirecting...');
+            setMessageType('error');
+            setTimeout(() => window.location.href = '/login', 1500);
+            setIsSubmitting(false);
+            return;
+        }
+
+        try {
+            const res = await axios.post(INVEST_ENDPOINT, { plan_id: plan.id }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            
+            setMessage(res.data.message || `Congratulations! Investment in ${plan.title} activated successfully.`);
+            setMessageType('success');
+            
+            if (onInvestSuccess) onInvestSuccess(); 
+
+        } catch (err) {
+            const errorMsg = err.response?.data?.error || 'An unexpected error occurred.';
+            setMessage(`Error: ${errorMsg}`);
+            setMessageType('error');
+        } finally {
+            setIsSubmitting(false);
+            setTimeout(() => {
+                setMessage('');
+                setMessageType('');
+                setShowModal(false); // Close modal after showing success/error
+            }, 5000); 
+        }
+    };
+    
+    // Button click now opens the modal
+    const handleInvestButtonClick = () => {
+        if (!isLocked) {
+            setMessage(''); 
+            setMessageType('');
+            setShowModal(true);
+        }
+    };
+
+
+    // --- Responsive Styles ---
+    const cardStyle = {
+        background: FORM_CARD_BG,
+        borderRadius: isMobile ? '12px' : '16px',
+        padding: isMobile ? '1rem' : '1.5rem',
+        boxShadow: isLocked 
+            ? '0 2px 8px rgba(245, 158, 11, 0.15)' 
+            : '0 2px 8px rgba(0, 0, 0, 0.05)',
+        border: isLocked ? `2px solid ${ORANGE_LOCKED}60` : `1px solid ${BORDER_COLOR}`,
+        transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
+        cursor: isLocked ? 'not-allowed' : 'pointer',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        marginBottom: isMobile ? '0.5rem' : '0',
+    };
+    
+    const buttonStyle = {
+        background: isLocked 
+            ? TEXT_GRAY
+            : isSubmitting 
+                ? GREEN_LIGHT 
+                : `linear-gradient(135deg, ${GREEN_PRIMARY} 0%, ${GREEN_DARK} 100%)`,
+        color: 'white',
+        border: 'none',
+        padding: isMobile ? '0.6rem 1rem' : '0.8rem 1.5rem',
+        borderRadius: isMobile ? '8px' : '10px',
+        fontSize: isMobile ? '0.85rem' : '1rem',
+        fontWeight: '700',
+        cursor: isLocked ? 'not-allowed' : (isSubmitting ? 'wait' : 'pointer'),
+        transition: 'all 0.3s ease',
+        marginTop: 'auto',
+        width: '100%',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: '0.5rem',
+        minHeight: isMobile ? '44px' : 'auto',
+    };
+
+    const valueStyle = {
+        fontSize: isMobile ? '1.1rem' : '1.5rem',
+        fontWeight: '900',
+        color: isLocked ? ORANGE_LOCKED : GREEN_PRIMARY,
+        lineHeight: '1.2',
+    };
+    
+    const labelStyle = {
+        fontSize: isMobile ? '0.7rem' : '0.8rem',
+        color: TEXT_GRAY,
+        fontWeight: '500',
+        marginTop: '0.2rem',
+        lineHeight: '1.2',
+    };
+
+    const finalMessageStyle = {
+        marginTop: '0.8rem', 
+        fontSize: isMobile ? '0.7rem' : '0.9rem', 
+        color: messageType === 'error' ? RED_ERROR : GREEN_PRIMARY,
+        textAlign: 'center',
+        padding: isMobile ? '0.3rem' : '0.5rem',
+        backgroundColor: messageType === 'error' ? `${RED_ERROR}10` : `${GREEN_PRIMARY}10`,
+        borderRadius: '4px',
+        lineHeight: '1.3',
+    };
+
+
+    return (
+        <>
+            {/* The Confirmation Modal */}
+            {showModal && (
+                <ConfirmationModal
+                    plan={plan}
+                    onCancel={() => setShowModal(false)}
+                    onInvest={executeInvest}
+                    isMobile={isMobile}
+                    isSubmitting={isSubmitting}
+                />
+            )}
+
+            {/* The Main Plan Card */}
+            <div 
+                style={{ 
+                    ...cardStyle, 
+                    ...(isHovered && !isLocked ? { 
+                        transform: isMobile ? 'translateY(-2px)' : 'translateY(-5px)', 
+                        boxShadow: '0 8px 20px rgba(0, 0, 0, 0.15)' 
+                    } : {}) 
+                }}
+                onMouseEnter={() => !isMobile && setIsHovered(true)}
+                onMouseLeave={() => !isMobile && setIsHovered(false)}
+            >
+                {/* Image Section */}
+                <div style={{
+                    height: isMobile ? '100px' : '150px',
+                    width: '100%',
+                    backgroundColor: BG_LIGHT,
+                    borderRadius: isMobile ? '8px' : '10px',
+                    marginBottom: isMobile ? '0.8rem' : '1rem',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: `1px solid ${BORDER_COLOR}`
+                }}>
+                    {imageUrl ? (
+                        <img 
+                            src={imageUrl} 
+                            alt={plan.title} 
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                            onError={(e) => { 
+                                e.target.style.display = 'none'; 
+                                const placeholder = e.target.nextSibling;
+                                if (placeholder) placeholder.style.display = 'flex'; 
+                            }}
+                        />
+                    ) : null}
+                    <div style={{ 
+                        display: imageUrl ? 'none' : 'flex', 
+                        flexDirection: 'column', 
+                        alignItems: 'center', 
+                        color: TEXT_GRAY 
+                    }}>
+                        <FaImage style={{ fontSize: isMobile ? '1.5rem' : '3rem', marginBottom: '0.3rem' }} />
+                        <span style={{ fontSize: isMobile ? '0.7rem' : '0.9rem' }}>No Image</span>
+                    </div>
+                </div>
+
+                {/* Title Section */}
+                <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'flex-start',
+                    marginBottom: isMobile ? '0.6rem' : '1rem', 
+                    borderBottom: `1px solid ${BORDER_COLOR}80`, 
+                    paddingBottom: isMobile ? '0.3rem' : '0.5rem',
+                    minHeight: isMobile ? 'auto' : '60px',
+                }}>
+                    <h2 style={{ 
+                        fontSize: isMobile ? '1rem' : '1.4rem', 
+                        fontWeight: '800', 
+                        color: TEXT_DARK, 
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.3rem',
+                        margin: 0,
+                        lineHeight: '1.2',
+                        flex: 1,
+                    }}>
+                        {plan.title}
+                        {isLocked && <FaLock style={{ color: ORANGE_LOCKED, fontSize: isMobile ? '0.8rem' : '1rem', flexShrink: 0 }} />}
+                    </h2>
+                    <span style={{ 
+                        fontSize: isMobile ? '0.7rem' : '0.8rem', 
+                        fontWeight: '600', 
+                        color: GREEN_LIGHT, 
+                        backgroundColor: `${GREEN_PRIMARY}10`,
+                        padding: isMobile ? '0.2rem 0.4rem' : '0.3rem 0.6rem',
+                        borderRadius: '4px',
+                        flexShrink: 0,
+                        marginLeft: '0.5rem',
+                    }}>
+                        {plan.duration_days}D
+                    </span>
+                </div>
+
+                {/* Investment Amount */}
+                <div style={{ marginBottom: isMobile ? '0.6rem' : '1rem' }}>
+                    <div style={valueStyle}>
+                        PKR {parseFloat(plan.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </div>
+                    <div style={labelStyle}>
+                        Investment Amount
+                    </div>
+                </div>
+
+                {/* Profit Details Grid */}
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: isMobile ? '0.5rem' : '1rem',
+                    textAlign: 'center',
+                    padding: isMobile ? '0.3rem 0' : '0.5rem 0',
+                    borderTop: `1px dashed ${BORDER_COLOR}`,
+                    marginBottom: isMobile ? '0.8rem' : '1rem',
+                }}>
+                    <div>
+                        <div style={{ ...valueStyle, color: TEXT_DARK, fontSize: isMobile ? '0.9rem' : '1.1rem' }}>
+                            PKR {parseFloat(plan.daily_profit).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        </div>
+                        <div style={labelStyle}>
+                            Daily Profit
+                        </div>
+                    </div>
+                    <div>
+                        <div style={{ ...valueStyle, fontSize: isMobile ? '0.9rem' : '1.1rem' }}>
+                            PKR {parseFloat(plan.total_profit).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        </div>
+                        <div style={labelStyle}>
+                            Total Return
+                        </div>
+                    </div>
+                </div>
+
+                {/* API Message (Error/Success) */}
+                {message && (
+                    <div style={finalMessageStyle}>
+                        {messageType === 'success' ? '✅' : '❌'} {message}
+                    </div>
+                )}
+
+                {/* Buy Button */}
+                <button 
+                    style={buttonStyle}
+                    onClick={handleInvestButtonClick} 
+                    disabled={isLocked || isSubmitting}
+                    onMouseEnter={(e) => !isLocked && (e.target.style.transform = 'translateY(-1px)')}
+                    onMouseLeave={(e) => !isLocked && (e.target.style.transform = 'translateY(0)')}
+                >
+                    {isLocked ? 'Locked' : 'Invest Now'}
+                </button>
+            </div>
+        </>
+    );
+};
+
+
+// --- Quick Action Components ---
+const DesktopQuickActionButton = ({ icon: Icon, label, color, path }) => {
+    const [isHovered, setIsHovered] = useState(false);
+    
+    const actionStyle = {
+        textAlign: 'center',
+        textDecoration: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        padding: '1rem 0.5rem',
+        borderRadius: '12px',
+        transition: 'all 0.3s ease',
+        cursor: 'pointer',
+        flex: 1,
+        backgroundColor: isHovered ? INPUT_BG : 'transparent',
+        transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
+    };
+
+    return (
+        <a 
+            href={path} 
+            style={actionStyle}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+        >
+            <Icon style={{ fontSize: '2rem', color: color, marginBottom: '0.5rem' }} />
+            <span style={{ fontSize: '0.85rem', fontWeight: '600', color: TEXT_DARK }}>{label}</span>
+        </a>
+    );
+};
+
+const MobileQuickActionButton = ({ icon: Icon, label, color, path }) => {
+    const [isPressed, setIsPressed] = useState(false);
+    
+    const actionStyle = {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textDecoration: 'none',
+        color: 'white',
+        fontSize: '0.7rem',
+        fontWeight: '600',
+        padding: '8px 2px',
+        transition: 'all 0.2s ease',
+        cursor: 'pointer',
+        flex: 1,
+        transform: isPressed ? 'scale(0.95)' : 'scale(1)',
+        minWidth: '60px',
+    };
+    
+    const iconWrapperStyle = {
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        borderRadius: '10px',
+        padding: '8px',
+        marginBottom: '4px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '36px',
+        height: '36px',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    };
+
+    return (
+        <a 
+            href={path} 
+            style={actionStyle}
+            onTouchStart={() => setIsPressed(true)}
+            onTouchEnd={() => setIsPressed(false)}
+            onMouseDown={() => setIsPressed(true)}
+            onMouseUp={() => setIsPressed(false)}
+            onMouseLeave={() => setIsPressed(false)}
+        >
+            <div style={iconWrapperStyle}>
+                <Icon style={{ fontSize: '1.1rem', color: color }} />
+            </div>
+            <span style={{ textAlign: 'center', lineHeight: '1.1' }}>{label}</span>
+        </a>
+    );
+};
+
+// --- Main Dashboard Component ---
+function Dashboard() {
+    const [balance, setBalance] = useState('0.00');
+    const [plans, setPlans] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
+
+    const isMobile = windowWidth <= 768;
+
+    useEffect(() => { 
+        const handleResize = () => setWindowWidth(window.innerWidth);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    const fetchAllData = async () => {
+        const token = getAccessToken();
+        if (!token) {
+            setError('Authentication required. Redirecting to login...');
+            setTimeout(() => window.location.href = '/login', 1500);
+            setLoading(false);
+            return;
+        }
+
+        try {
+            const walletRes = await axios.get(WALLET_ENDPOINT, { headers: { Authorization: `Bearer ${token}` } }); 
+            setBalance(parseFloat(walletRes.data.balance || 0).toFixed(2));
+
+            const plansRes = await axios.get(PLANS_ENDPOINT, { headers: { Authorization: `Bearer ${token}` } }); 
+            setPlans(plansRes.data);
+            
+            setError(null);
+        } catch (err) {
+            setError('Failed to fetch dashboard data. Check API/Network.');
+            console.error("API Error:", err.response || err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => { 
+        fetchAllData();
+    }, []); 
+
+    // --- Responsive Styles ---
+    const dashboardStyles = {
+        container: {
+            minHeight: '100vh',
+            background: BG_LIGHT,
+            padding: isMobile ? '0.5rem' : '1rem',
+        },
+        balanceCard: {
+            background: `linear-gradient(145deg, ${GREEN_PRIMARY}, ${GREEN_DARK})`,
+            borderRadius: isMobile ? '12px' : '16px',
+            padding: isMobile ? '1.2rem 1rem' : '2rem', 
+            color: FORM_CARD_BG,
+            textAlign: 'center',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            marginBottom: isMobile ? '1rem' : '1.5rem',
+            display: 'flex',
+            flexDirection: 'column',
+        },
+        balanceContent: {
+            marginBottom: isMobile ? '0.8rem' : '1rem', 
+        },
+        balanceTitle: {
+            fontSize: isMobile ? '0.85rem' : '1.1rem',
+            fontWeight: '500',
+            opacity: 0.9,
+            marginBottom: '0.3rem',
+        },
+        balanceValue: {
+            fontSize: isMobile ? '1.8rem' : '2.5rem',
+            fontWeight: '800',
+            letterSpacing: '0.5px',
+            lineHeight: '1.1',
+        },
+        mobileQuickActions: {
+            display: isMobile ? 'flex' : 'none',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            borderTop: '1px solid rgba(255, 255, 255, 0.2)',
+            paddingTop: '0.8rem',
+            gap: '0.2rem',
+        },
+        desktopQuickActionsCard: {
+            display: isMobile ? 'none' : 'flex', 
+            justifyContent: 'space-around',
+            backgroundColor: FORM_CARD_BG,
+            borderRadius: '12px',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
+            marginBottom: '1.5rem',
+            padding: '0.8rem 0.2rem',
+        },
+        plansHeader: {
+            fontSize: isMobile ? '1.3rem' : '1.6rem', 
+            fontWeight: '800', 
+            color: TEXT_DARK, 
+            marginBottom: '0.3rem',
+            lineHeight: '1.2',
+        },
+        plansSubtitle: {
+            color: TEXT_GRAY, 
+            fontSize: isMobile ? '0.8rem' : '0.9rem', 
+            marginBottom: isMobile ? '1rem' : '1.5rem',
+            lineHeight: '1.3',
+        },
+        plansGrid: {
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: isMobile ? '0.8rem' : '1.5rem',
+        },
+        messageStyle: {
+            textAlign: 'center',
+            padding: isMobile ? '1.5rem 1rem' : '2rem',
+            fontSize: isMobile ? '0.9rem' : '1.1rem',
+            color: TEXT_DARK,
+            fontWeight: '500',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '0.8rem',
+        },
+        errorStyle: {
+            background: '#FEE2E2', 
+            borderRadius: '8px',
+            border: `1px solid ${RED_ERROR}20`,
+        },
+    };
+
+    return (
+        <Layout currentPath="/invest"> 
+            <div style={dashboardStyles.container}>
+                {/* CSS Animations */}
+                <style>
+                    {`
+                    @keyframes spin {
+                        0% { transform: rotate(0deg); }
+                        100% { transform: rotate(360deg); }
+                    }
+                    
+                    .animate-spin {
+                        animation: spin 1s linear infinite;
+                    }
+                    `}
+                </style>
+
+                {loading ? (
+                    <div style={dashboardStyles.messageStyle}>
+                        <FiLoader className="animate-spin" style={{ fontSize: '1.5rem', color: GREEN_PRIMARY }} />
+                        <p>Loading Dashboard...</p>
+                    </div>
+                ) : error ? (
+                    <div style={{ ...dashboardStyles.messageStyle, ...dashboardStyles.errorStyle }}>
+                        {error}
+                    </div>
+                ) : (
+                    <>
+                        {/* 1. BALANCE CARD + MOBILE QUICK ACTIONS */}
+                        <div style={dashboardStyles.balanceCard}>
+                            <div style={dashboardStyles.balanceContent}>
+                                <div style={dashboardStyles.balanceTitle}>Total Balance</div>
+                                <div style={dashboardStyles.balanceValue}>PKR {balance}</div>
+                            </div>
+
+                            {/* Mobile Quick Actions */}
+                            <div style={dashboardStyles.mobileQuickActions}>
+                                <MobileQuickActionButton icon={FaDollarSign} label="Deposit" color={GREEN_PRIMARY} path="/deposit" />
+                                <MobileQuickActionButton icon={FaWallet} label="Withdraw" color={RED_WITHDRAW} path="/withdraw" />
+                                <MobileQuickActionButton icon={FaHistory} label="History" color={BLUE_HISTORY} path="/profit" />
+                                <MobileQuickActionButton icon={FaUsers} label="Plan profit" color={GREEN_LIGHT} path="/profit" />
+                            </div>
+                        </div>
+
+                        {/* 2. DESKTOP QUICK ACTIONS */}
+                        <div style={dashboardStyles.desktopQuickActionsCard}>
+                            <DesktopQuickActionButton icon={FaDollarSign} label="Deposit" color={GREEN_PRIMARY} path="/deposit" />
+                            <DesktopQuickActionButton icon={FaWallet} label="Withdraw" color={RED_WITHDRAW} path="/withdraw" />
+                            <DesktopQuickActionButton icon={FaHistory} label="History" color={BLUE_HISTORY} path="/history" />
+                            <DesktopQuickActionButton icon={FaUsers} label="plan profit" color={GREEN_LIGHT} path="/profit" />
+                        </div>
+
+                        {/* 3. INVESTMENT PLANS */}
+                        <h2 style={dashboardStyles.plansHeader}>Investment Plans</h2>
+                        <p style={dashboardStyles.plansSubtitle}>
+                            Choose the plan that suits your investment goals.
+                        </p>
+
+                        <div style={dashboardStyles.plansGrid}>
+                            {plans.map((plan) => (
+                                <PlanCard 
+                                    key={plan.id} 
+                                    plan={plan} 
+                                    onInvestSuccess={fetchAllData} 
+                                    isMobile={isMobile}
+                                />
+                            ))}
+                        </div>
+
+                        {plans.length === 0 && (
+                            <div style={dashboardStyles.messageStyle}>
+                                No investment plans available at the moment.
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+        </Layout>
+    );
 }
 
-export default DashboardPage;
+export default Dashboard;

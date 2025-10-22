@@ -8,6 +8,10 @@ import Team from './pages/Team';
 import DepositHistoryPage from './pages/DepositHistoryPage';
 import PlanHistory from './pages/PlanHistory';
 import Withdrew from './pages/Withdrew';
+import ProfitPage from './pages/ProfitPage';
+import TeamPage from './pages/TeamPage';
+import ProgressPage from './pages/ProgressPage';
+
 
 function App() {
   return (
@@ -22,6 +26,9 @@ function App() {
         <Route path="/DepositHistory" element={<DepositHistoryPage />} />
         <Route path="/PlanHistory" element={<PlanHistory />} />
         <Route path="/withdraw" element={<Withdrew />} />
+        <Route path="/profit" element={<ProfitPage />} />
+        <Route path="/Teams" element={<TeamPage />} />
+        <Route path="/Progress" element={<ProgressPage />} />
         
       </Routes>
     </Router>

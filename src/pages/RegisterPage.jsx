@@ -1,11 +1,11 @@
 // src/components/Register.js
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom'; // <--- ADDED: Import useNavigate
+import { useNavigate } from 'react-router-dom';
 import BASE_URL from '../api/baseURL';
 import sidebarImage from '../assets/images/sidebar.png';
 
 const Register = () => {
-  const navigate = useNavigate(); // <--- ADDED: Initialize useNavigate
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -59,13 +59,11 @@ const Register = () => {
       return;
     }
 
-    // Constructing the payload
     const payload = {
         username: formData.username,
         email: formData.email,
         password: formData.password,
         confirm_password: formData.confirm_password,
-        // Only include referral_input if it has a value, as it's optional
         ...(formData.referral_input && { referral_input: formData.referral_input })
     };
 
@@ -82,13 +80,9 @@ const Register = () => {
 
         if (response.ok) {
             setMessage(data.message || 'Registration successful. Please verify your email.');
-            // Move to the next step (OTP verification)
             setStep(2);
-            // Pre-fill OTP form with the email used
             setOtpData({ ...otpData, email: formData.email });
         } else {
-            // Handle validation errors from the server
-            // e.g., "Email already registered.", "User is already registered."
             const errorMessage = data.error || data.message || 'Registration failed. Please check your details.';
             setError(errorMessage);
         }
@@ -124,16 +118,15 @@ const Register = () => {
 
         if (response.ok) {
             setMessage(data.message || 'OTP verified. Account created successfully! Redirecting to login...');
-            setError(''); // Clear any previous error
-            // **UPDATED:** Redirect the user to the login page after a short delay
+            setError(''); 
+            // Redirect the user to the login page after a short delay
             setTimeout(() => {
                 navigate('/login'); 
-            }, 2000); // 2-second delay to show the success message
+            }, 2000); 
         } else {
-            // Handle validation errors like "Invalid OTP or already verified."
             const errorMessage = data.error || data.message || 'OTP verification failed.';
             setError(errorMessage);
-            setMessage(''); // Clear any previous success message
+            setMessage(''); 
         }
     } catch (err) {
         console.error('OTP verification network error:', err);
@@ -143,23 +136,25 @@ const Register = () => {
     }
   };
   
-  // --- COLOR CONSTANTS (Updated for better contrast) ---
-  const PURPLE_PRIMARY = '#8B5CF6'; 
-  const PURPLE_DARK = '#7C3AED';
-  const DARK_BG = '#0F0F23';       
-  const FORM_CARD_BG = '#1A1B2F';   
-  const INPUT_BG = '#252641'; 
-  const INPUT_BG_FILLED = '#2D2E52'; 
-  const TEXT_LIGHT = '#E2E8F0';     
-  const TEXT_GRAY = '#94A3B8';
+  // --- COLOR CONSTANTS (UPDATED to Dark Green Scheme) ---
+  const GREEN_PRIMARY = '#0a520d';  // Your main Dark Green
+  const GREEN_DARK = '#073c09';     // A darker variant for gradients/shadows
+  const BG_PRIMARY = '#FFFFFF';     // White Background
+  const FORM_CARD_BG = '#FFFFFF';   // White Form Card
+  const INPUT_BG = '#F7F8FA';       // Very Light Grey Input Background
+  const INPUT_BG_FILLED = '#EEF0F2';// Slightly Darker Grey for Filled State
+  const TEXT_DARK = '#1F2937';      // Near-Black for main text
+  const TEXT_GRAY = '#6B7280';      // Medium Grey for sub-text
+  const ERROR_RED = '#EF4444';
+  const SUCCESS_GREEN = '#10B981';
 
   // --- ENHANCED STYLES ---
   const styles = {
-    // 1. Container (FIXED - NO SCROLL)
+    // 1. Container 
     container: {
       minHeight: '100vh',
       width: '100vw',
-      background: DARK_BG,
+      background: INPUT_BG, // Use a very light grey for the page background
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -169,7 +164,7 @@ const Register = () => {
       position: 'relative'
     },
 
-    // 2. Main Card (PERFECTLY FITTED)
+    // 2. Main Card 
     mainCard: {
       display: 'flex',
       width: isMobile ? '100%' : '95%',
@@ -179,15 +174,16 @@ const Register = () => {
       background: FORM_CARD_BG,
       borderRadius: isMobile ? '0' : '16px',
       overflow: 'hidden',
-      boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5)',
+      // Updated Shadow for White Background
+      boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.05)', 
       animation: 'slideUp 0.6s ease-out',
       flexDirection: isMobile ? 'column' : 'row',
     },
 
-    // 3. Left Panel (PERFECTLY POSITIONED IMAGE)
+    // 3. Left Panel (IMAGE)
     leftPanel: {
       flex: 1.3,
-      background: `linear-gradient(135deg, ${PURPLE_PRIMARY} 0%, ${PURPLE_DARK} 100%)`,
+      background: `linear-gradient(135deg, ${GREEN_PRIMARY} 0%, ${GREEN_DARK} 100%)`,
       display: isMobile ? 'none' : 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -199,6 +195,7 @@ const Register = () => {
       height: '100%',
       objectFit: 'cover',
       display: 'block',
+      opacity: 0.6, // Dim the image slightly for better text readability
     },
     leftContent: {
       position: 'absolute',
@@ -214,13 +211,13 @@ const Register = () => {
       fontWeight: '800',
       lineHeight: 1.1,
       marginBottom: '1rem',
-      textShadow: '0 2px 10px rgba(0, 0, 0, 0.5)',
+      textShadow: '0 2px 5px rgba(0, 0, 0, 0.3)',
     },
     leftSubtitle: {
       fontSize: '0.95rem',
       opacity: 0.9,
       lineHeight: '1.5',
-      textShadow: '0 1px 5px rgba(0, 0, 0, 0.5)',
+      textShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
     },
     imageOverlay: {
       position: 'absolute',
@@ -228,11 +225,12 @@ const Register = () => {
       left: 0,
       right: 0,
       bottom: 0,
-      background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(124, 58, 237, 0.4) 100%)',
+      // Green overlay
+      background: `linear-gradient(135deg, ${GREEN_PRIMARY}50 0%, ${GREEN_DARK}70 100%)`, 
       zIndex: 2,
     },
 
-    // **NEW STYLE: Mobile Image Container**
+    // NEW STYLE: Mobile Image Container
     mobileImageContainer: {
         width: '100%',
         display: 'flex',
@@ -240,17 +238,18 @@ const Register = () => {
         padding: '2rem 0 0',
         marginBottom: '1.5rem',
     },
-    // **NEW STYLE: Mobile Circular Image**
+    // NEW STYLE: Mobile Circular Image
     mobileImage: {
         width: '90px',
         height: '90px',
         borderRadius: '50%',
         objectFit: 'cover',
-        border: `3px solid ${PURPLE_PRIMARY}`,
+        // Green border
+        border: `3px solid ${GREEN_PRIMARY}`, 
         boxShadow: `0 0 0 8px ${FORM_CARD_BG}`,
     },
     
-    // 4. Right Panel - Form Section (PROPER SPACING)
+    // 4. Right Panel - Form Section
     rightPanel: {
       flex: 1,
       display: 'flex',
@@ -268,7 +267,7 @@ const Register = () => {
     title: {
       fontSize: '1.8rem',
       fontWeight: '700',
-      color: 'white',
+      color: TEXT_DARK, // Dark Text on White
       marginBottom: '0.5rem',
       textAlign: 'left',
     },
@@ -279,7 +278,7 @@ const Register = () => {
       textAlign: 'left',
     },
     link: {
-      color: PURPLE_PRIMARY,
+      color: GREEN_PRIMARY, // Green Link
       textDecoration: 'none',
       fontWeight: '600',
       transition: 'color 0.2s ease',
@@ -295,13 +294,13 @@ const Register = () => {
       gap: '0.5rem',
     },
     label: {
-      color: TEXT_LIGHT,
+      color: TEXT_DARK, // Dark Text on White
       fontSize: '0.85rem',
       fontWeight: '500',
       textAlign: 'left',
     },
     
-    // 5. Input Fields (MATCHING DESIGN)
+    // 5. Input Fields
     input: {
       padding: '0.9rem 1rem',
       borderRadius: '8px',
@@ -310,20 +309,20 @@ const Register = () => {
       outline: 'none',
       fontFamily: 'inherit',
       backgroundColor: INPUT_BG,
-      color: TEXT_LIGHT,
+      color: TEXT_DARK, // Dark Text in Input
       border: `1px solid ${INPUT_BG}`,
       width: '100%',
       boxSizing: 'border-box',
     },
     inputFocused: {
       backgroundColor: INPUT_BG_FILLED,
-      border: `1px solid ${PURPLE_PRIMARY}`,
-      boxShadow: `0 0 0 2px ${PURPLE_PRIMARY}30`,
+      border: `1px solid ${GREEN_PRIMARY}`, // Green Focus Border
+      boxShadow: `0 0 0 2px ${GREEN_PRIMARY}30`,
     },
     inputDisabled: {
-      backgroundColor: '#1A1B2F',
+      backgroundColor: '#E5E7EB',
       color: TEXT_GRAY,
-      border: '1px solid #2D3748',
+      border: '1px solid #D1D5DB',
       cursor: 'not-allowed',
     },
 
@@ -341,7 +340,8 @@ const Register = () => {
       textAlign: 'left',
     },
     registerBtn: {
-      background: `linear-gradient(135deg, ${PURPLE_PRIMARY} 0%, ${PURPLE_DARK} 100%)`,
+      // Dark Green Gradient Button
+      background: `linear-gradient(135deg, ${GREEN_PRIMARY} 0%, ${GREEN_DARK} 100%)`, 
       color: 'white',
       border: 'none',
       padding: '1rem 2rem',
@@ -352,27 +352,29 @@ const Register = () => {
       transition: 'all 0.3s ease',
       marginTop: '0.5rem',
       width: '100%',
+      boxShadow: `0 4px 10px ${GREEN_PRIMARY}40`,
     },
     btnLoading: {
-      opacity: 0.7,
+      opacity: 0.8,
       cursor: 'not-allowed',
+      boxShadow: 'none',
     },
 
     // 7. Message Styles
     successMsg: {
-      color: '#10B981',
+      color: SUCCESS_GREEN,
       fontSize: '0.85rem',
       padding: '0.75rem',
       borderRadius: '6px',
-      backgroundColor: '#10B98120',
+      backgroundColor: `${SUCCESS_GREEN}20`,
       textAlign: 'center',
     },
     errorMsg: {
-      color: '#EF4444',
+      color: ERROR_RED,
       fontSize: '0.85rem',
       padding: '0.75rem',
       borderRadius: '6px',
-      backgroundColor: '#EF444420',
+      backgroundColor: `${ERROR_RED}20`,
       textAlign: 'center',
     },
 
@@ -392,8 +394,8 @@ const Register = () => {
     },
     backBtn: {
       background: 'transparent',
-      color: PURPLE_PRIMARY,
-      border: `1px solid ${PURPLE_PRIMARY}`,
+      color: GREEN_PRIMARY, // Green Text
+      border: `1px solid ${GREEN_PRIMARY}`, // Green Border
       padding: '0.9rem 2rem',
       borderRadius: '8px',
       fontSize: '0.95rem',
@@ -413,7 +415,7 @@ const Register = () => {
   return (
     <div style={styles.container}>
       
-      {/* CSS Animations */}
+      {/* CSS Animations and Global Body Style */}
       <style>
         {`
           @keyframes slideUp {
@@ -427,7 +429,7 @@ const Register = () => {
           body {
             margin: 0;
             padding: 0;
-            background: ${DARK_BG};
+            background: ${INPUT_BG};
             overflow: ${isMobile ? 'auto' : 'hidden'};
           }
         `}
@@ -456,7 +458,7 @@ const Register = () => {
         <div style={styles.rightPanel}>
           <div style={styles.formContainer}>
             
-            {/* **NEW BLOCK: Mobile Image (Show only on Mobile)** */}
+            {/* Mobile Image (Show only on Mobile) */}
             {isMobile && (
                 <div style={styles.mobileImageContainer}>
                     <img 
@@ -475,8 +477,9 @@ const Register = () => {
                   <a 
                     href="/login" 
                     style={styles.link}
-                    onMouseEnter={(e) => e.target.style.color = '#A78BFA'}
-                    onMouseLeave={(e) => e.target.style.color = PURPLE_PRIMARY}
+                    // Green Hover Effect
+                    onMouseEnter={(e) => e.target.style.color = GREEN_DARK}
+                    onMouseLeave={(e) => e.target.style.color = GREEN_PRIMARY}
                   >
                     Log in
                   </a>
@@ -590,13 +593,20 @@ const Register = () => {
                       style={{
                         width: '18px',
                         height: '18px',
-                        accentColor: PURPLE_PRIMARY,
+                        accentColor: GREEN_PRIMARY, // Green Checkbox
                         marginTop: '2px',
                         cursor: 'pointer'
                       }}
                     />
                     <label htmlFor="terms" style={styles.checkboxLabel}>
-                      I agree to the firm's <a href="#" style={styles.link}>Terms & Conditions</a>
+                      I agree to the firm's <a 
+                        href="#" 
+                        style={styles.link}
+                        onMouseEnter={(e) => e.target.style.color = GREEN_DARK}
+                        onMouseLeave={(e) => e.target.style.color = GREEN_PRIMARY}
+                      >
+                        Terms & Conditions
+                      </a>
                     </label>
                   </div>
 
@@ -608,7 +618,8 @@ const Register = () => {
                       ...(loading && styles.btnLoading)
                     }}
                     disabled={loading}
-                    onMouseEnter={(e) => !loading && (e.target.style.transform = 'translateY(-2px)')}
+                    // Simple Y-Axis Animation for professional touch
+                    onMouseEnter={(e) => !loading && (e.target.style.transform = 'translateY(-3px)')}
                     onMouseLeave={(e) => !loading && (e.target.style.transform = 'translateY(0)')}
                   >
                     {loading ? 'Processing...' : 'Get Started'}
@@ -621,7 +632,7 @@ const Register = () => {
                 <h1 style={styles.title}>Verify Your Email</h1>
                 <p style={styles.otpInstruction}>
                   A 6-digit verification code has been sent to:<br />
-                  <strong style={{color: TEXT_LIGHT}}>{otpData.email}</strong>. Please check your inbox.
+                  <strong style={{color: TEXT_DARK}}>{otpData.email}</strong>. Please check your inbox.
                 </p>
 
                 <form onSubmit={handleVerifyOtp} style={styles.form}>
@@ -643,8 +654,8 @@ const Register = () => {
                       placeholder="Enter 6-digit OTP"
                       required
                       maxLength="6"
-                      inputMode="numeric" // Added for better mobile support
-                      pattern="[0-9]{6}" // Added for basic browser validation
+                      inputMode="numeric"
+                      pattern="[0-9]{6}" 
                       onFocus={() => handleFocus('otp')}
                       onBlur={handleBlur}
                     />
@@ -658,7 +669,7 @@ const Register = () => {
                         ...(loading && styles.btnLoading)
                       }}
                       disabled={loading}
-                      onMouseEnter={(e) => !loading && (e.target.style.transform = 'translateY(-2px)')}
+                      onMouseEnter={(e) => !loading && (e.target.style.transform = 'translateY(-3px)')}
                       onMouseLeave={(e) => !loading && (e.target.style.transform = 'translateY(0)')}
                     >
                       {loading ? 'Verifying...' : 'Complete Verification'}
@@ -668,18 +679,21 @@ const Register = () => {
                       style={styles.backBtn}
                       onClick={() => {
                           setStep(1);
-                          setError(''); // Clear error when going back
-                          setMessage(''); // Clear message when going back
+                          setError('');
+                          setMessage('');
                       }}
+                      // Invert Color Hover Effect
                       onMouseEnter={(e) => {
-                        e.target.style.backgroundColor = PURPLE_PRIMARY;
+                        e.target.style.backgroundColor = GREEN_PRIMARY;
                         e.target.style.color = 'white';
-                        e.target.style.transform = 'translateY(-2px)';
+                        e.target.style.transform = 'translateY(-3px)';
+                        e.target.style.boxShadow = `0 4px 10px ${GREEN_PRIMARY}40`;
                       }}
                       onMouseLeave={(e) => {
                         e.target.style.backgroundColor = 'transparent';
-                        e.target.style.color = PURPLE_PRIMARY;
+                        e.target.style.color = GREEN_PRIMARY;
                         e.target.style.transform = 'translateY(0)';
+                        e.target.style.boxShadow = 'none';
                       }}
                     >
                       Back to Registration

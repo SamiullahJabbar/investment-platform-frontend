@@ -1,9 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+// Custom Layout component for Header and Footer (Assuming this exists)
+import Layout from '../components/Layout'; 
+// Updated Icons for better visual appeal
+import { 
+    FaMoneyBillWave, FaHistory, FaChevronLeft, FaLock, FaCopy, FaCheckCircle, 
+    FaExclamationTriangle, FaHome, FaSpinner, FaReceipt, FaClock, FaRegCalendarAlt, 
+    FaMoneyBillAlt, FaMobileAlt, FaUniversity, FaCreditCard, FaCheck, FaTimes, FaHourglassHalf,
+    FaChevronDown, FaChevronUp
+} from 'react-icons/fa'; 
 import BASE_URL, { removeTokens } from '../api/baseURL';
 
-// --- JWT DECODE FUNCTION (Remains the same) ---
+// ----------------------------------------------------------------
+// JWT DECODE FUNCTION (Helper function)
+// ----------------------------------------------------------------
 const decodeJwt = (token) => {
     if (!token) return null;
     try {
@@ -27,21 +38,46 @@ const decodeJwt = (token) => {
     }
 };
 
+// --- API Endpoints ---
+const ACCOUNT_DETAILS_ENDPOINT = `${BASE_URL}/wallet/admin/account-details/`;
+const DEPOSIT_SUBMIT_ENDPOINT = `${BASE_URL}/transactions/deposit/`;
+const DEPOSIT_HISTORY_ENDPOINT = `${BASE_URL}/transactions/deposit/history/`;
+
+
+// --- COLOR CONSTANTS ---
+const GREEN_PRIMARY = '#0a520d';
+const GREEN_DARK = '#073c09';
+const GREEN_LIGHT = '#388E3C';
+const BG_LIGHT = '#F0F4F8'; // Light background
+const FORM_CARD_BG = '#FFFFFF'; // White card background
+const INPUT_BG = '#F8FAFC';
+const INPUT_BG_FILLED = '#E2E8F0';
+const TEXT_DARK = '#1E293B'; // Main text color
+const TEXT_GRAY = '#64748B';
+const TEXT_DARK_GRAY = '#94A3B8';
+const SUCCESS_GREEN = '#10B981';
+const ERROR_RED = '#EF4444';
+const BORDER_COLOR = '#E2E8F0';
+const PENDING_ORANGE = '#F59E0B';
+
+
 function DepositPage() {
   const navigate = useNavigate();
-  const [displayUserName, setDisplayUserName] = useState('User');
   const [loading, setLoading] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // --- UPDATED STEP STATE: Now 1, 2, 3, or 4 (Success) ---
+  // --- MAIN STATES ---
   const [step, setStep] = useState(1);
+  const [activeTab, setActiveTab] = useState('Deposit'); // Deposit or History
+  const [accountDetails, setAccountDetails] = useState(null);
+  const [history, setHistory] = useState([]);
 
-  // --- UPDATED FORM DATA STATE ---
+  // FIX 1: Custom dropdown state for mobile
+  const [showMethodDropdown, setShowMethodDropdown] = useState(false);
+
   const [formData, setFormData] = useState({
     amount: '',
     method: '', // JazzCash, Easypaisa, BankTransfer
-
-    // Step 3 API fields
     transaction_id: '',
     bank_name: '',
     account_owner: '',
@@ -51,8 +87,7 @@ function DepositPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [previewImage, setPreviewImage] = useState('');
-  const [activeTab, setActiveTab] = useState('Deposit'); // Deposit is active tab
-  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const [windowWidth] = useState(window.innerWidth); 
   const [focusedField, setFocusedField] = useState(null);
   const [hoveredFile, setHoveredFile] = useState(false);
 
@@ -61,20 +96,49 @@ function DepositPage() {
   const AMOUNT_OPTIONS = [3000, 5000, 10000];
   const METHOD_OPTIONS = ['JazzCash', 'Easypaisa', 'BankTransfer'];
 
-  // Fixed Bank Details (Used for Step 2)
-  const FIXED_BANK_DETAILS = {
-    JazzCash: { icon: '📱', name: 'JazzCash', number: '0300-1234567', detail: 'Send to Phone Number' },
-    Easypaisa: { icon: '📱', name: 'EasyPaisa', number: '0312-7654321', detail: 'Send to Phone Number' },
-    BankTransfer: { icon: '🏛️', name: 'Bank Transfer', number: '1234-5678-9012-3456', detail: 'HBL Bank' }
+
+  // --- API FETCH FUNCTIONS ---
+  const fetchAccountDetails = async () => {
+    const token = sessionStorage.getItem('accessToken');
+    if (!token) return;
+
+    try {
+        const res = await axios.get(ACCOUNT_DETAILS_ENDPOINT, { 
+            headers: { Authorization: `Bearer ${token}` } 
+        });
+        if (res.data && res.data.length > 0) {
+            setAccountDetails(res.data[0]);
+        } else {
+            setError('Admin account details not found.');
+        }
+    } catch (err) {
+        console.error("Account Details API Error:", err.response || err);
+        setError('Failed to fetch payment details.');
+    }
   };
-  const FIXED_ACCOUNT_OWNER = 'Tesing Acount ';
+
+  const fetchDepositHistory = async () => {
+    const token = sessionStorage.getItem('accessToken');
+    if (!token) return;
+
+    try {
+        setLoading(true);
+        const res = await axios.get(DEPOSIT_HISTORY_ENDPOINT, { 
+            headers: { Authorization: `Bearer ${token}` } 
+        });
+        setHistory(res.data);
+    } catch (err) {
+        console.error("History API Error:", err.response || err);
+        setError('Failed to fetch deposit history.');
+        setHistory([]);
+    } finally {
+        setLoading(false);
+    }
+  };
 
 
-  // --- AUTH AND RESIZE EFFECTS (Unchanged) ---
+  // --- AUTH AND DATA FETCH EFFECTS ---
   useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener('resize', handleResize);
-
     const checkAuthAndSetUser = () => {
       const token = sessionStorage.getItem('accessToken');
       if (!token) {
@@ -84,27 +148,27 @@ function DepositPage() {
 
       const decoded = decodeJwt(token);
 
-      if (decoded) {
-        const userName = decoded.username || decoded.name || decoded.user;
-        if (userName) {
-            setDisplayUserName(userName.toUpperCase());
-        } else {
-            setDisplayUserName('INVESTOR');
-        }
-      } else {
-        console.warn('Token decoding failed. Redirecting to login.');
+      if (!decoded) {
         removeTokens();
         navigate('/login');
+        return;
       }
-
+      
+      fetchAccountDetails(); 
       setAuthLoading(false);
     };
 
     checkAuthAndSetUser();
-    return () => window.removeEventListener('resize', handleResize);
   }, [navigate]);
 
-  // --- HANDLERS (Unchanged) ---
+  useEffect(() => {
+    if (activeTab === 'History' && history.length === 0) {
+        fetchDepositHistory();
+    }
+  }, [activeTab, history.length]);
+
+
+  // --- HANDLERS ---
   const isMobile = windowWidth <= 768;
 
   const handleFocus = (field) => setFocusedField(field);
@@ -115,8 +179,10 @@ function DepositPage() {
     setError('');
   };
 
+  // FIX 1: Custom method selection handler
   const handleMethodSelect = (method) => {
     setFormData(prev => ({ ...prev, method: method }));
+    setShowMethodDropdown(false); // Close dropdown after selection
     setError('');
   };
 
@@ -144,7 +210,6 @@ function DepositPage() {
     }
   };
 
-  // --- NAVIGATION HANDLERS (Unchanged) ---
   const handleNext = () => {
     setMessage('');
     setError('');
@@ -175,8 +240,7 @@ function DepositPage() {
   const handleGoHome = () => {
       navigate('/'); 
   }
-
-  // --- API SUBMISSION (Step 3) (Unchanged) ---
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -191,13 +255,6 @@ function DepositPage() {
 
     try {
       const token = sessionStorage.getItem('accessToken');
-      if (!token) {
-        setError('Session expired. Please login again.');
-        removeTokens();
-        navigate('/login');
-        setLoading(false);
-        return;
-      }
 
       const submitData = new FormData();
       submitData.append('amount', formData.amount);
@@ -208,7 +265,7 @@ function DepositPage() {
       submitData.append('screenshot', formData.screenshot);
 
       await axios.post(
-        `${BASE_URL}/transactions/deposit/`,
+        DEPOSIT_SUBMIT_ENDPOINT,
         submitData,
         {
           headers: {
@@ -255,19 +312,12 @@ function DepositPage() {
   };
 
 
-  const handleLogout = () => {
-    removeTokens();
-    navigate('/login');
-  };
-
   const handleNavigation = (tab) => {
     setActiveTab(tab);
-    if (tab === 'home') {
-      navigate('/');
-    } else if (tab === 'invest') {
-      navigate('/invest');
-    } else if (tab === 'profile') {
-      navigate('/');
+    if (tab === 'Deposit') {
+        setStep(1); 
+        setError(''); 
+        setMessage('');
     }
   };
   
@@ -276,108 +326,66 @@ function DepositPage() {
     setMessage('Copied to clipboard! ✅');
     setTimeout(() => setMessage(''), 2000);
   };
-
-
-  // --- COLOR CONSTANTS (Unchanged) ---
-  const PURPLE_PRIMARY = '#8B5CF6';
-  const PURPLE_DARK = '#7C3AED';
-  const PURPLE_LIGHT = '#A78BFA';
-  const DARK_BG = '#0F0F23';
-  const FORM_CARD_BG = '#1A1B2F';
-  const INPUT_BG = '#252641';
-  const INPUT_BG_FILLED = '#2D2E52';
-  const TEXT_LIGHT = '#F8FAFC';
-  const TEXT_GRAY = '#94A3B8';
-  const TEXT_DARK_GRAY = '#64748B';
-  const SUCCESS_GREEN = '#10B981';
-  const ERROR_RED = '#EF4444';
   
-  // Define header height for fixed positioning adjustments
-  const HEADER_HEIGHT = '70px'; // Approx. height of the header
-  const BOTTOM_NAV_HEIGHT = '85px'; // Height of the bottom navigation
+  const getMethodDetails = (method) => {
+    if (!accountDetails) return { number: 'Loading...', owner: 'Loading...', image: null, icon: FaCreditCard };
 
-  // --- STYLES (UPDATED FOR FIXED HEADER AND PROPER SCROLLING) ---
+    if (method === 'JazzCash') {
+        return {
+            number: accountDetails.jazzcash_number || 'N/A',
+            owner: accountDetails.owner_name || 'N/A',
+            image: accountDetails.jazzcash_image,
+            detail: 'Send to JazzCash Number',
+            icon: FaMobileAlt 
+        };
+    } else if (method === 'Easypaisa') {
+        return {
+            number: accountDetails.easypaisa_number || 'N/A',
+            owner: accountDetails.owner_name || 'N/A',
+            image: accountDetails.easypaisa_image,
+            detail: 'Send to EasyPaisa Number',
+            icon: FaMobileAlt
+        };
+    } else if (method === 'BankTransfer') {
+        return {
+            number: accountDetails.bank_account || 'N/A',
+            owner: accountDetails.owner_name || 'N/A',
+            image: accountDetails.bank_image,
+            detail: `Bank: ${accountDetails.bank_name || 'N/A'}`,
+            icon: FaUniversity
+        };
+    }
+    return null;
+  };
+
+
+  // --- STYLES (With all responsiveness and enhancements) ---
   const styles = {
     container: {
       minHeight: '100vh',
-      background: DARK_BG,
-      color: TEXT_LIGHT,
+      background: BG_LIGHT, 
+      color: TEXT_DARK, 
       fontFamily: "'Inter', 'Segoe UI', 'Arial', sans-serif",
       position: 'relative',
-      // No paddingBottom here; leave scrolling to body/main area
-    },
-
-    header: {
-      // FIX 1: Make header fixed so it stays on top
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      height: HEADER_HEIGHT, // Explicit height for alignment
-      padding: '12px 16px', // Adjusted padding for fixed height
-      background: 'rgba(26, 27, 47, 0.95)',
-      backdropFilter: 'blur(20px)',
-      borderBottom: `1px solid ${TEXT_DARK_GRAY}30`,
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      zIndex: 1010, // Higher Z-index than bottomNav
-      animation: 'slideDown 0.6s ease-out',
-      boxSizing: 'border-box'
-    },
-    headerLeft: {
-      flex: 1
-    },
-    welcomeText: {
-      fontSize: '14px',
-      color: TEXT_GRAY,
-      marginBottom: '4px'
-    },
-    userName: {
-      fontSize: '20px',
-      fontWeight: '700',
-      background: `linear-gradient(135deg, ${TEXT_LIGHT}, ${PURPLE_LIGHT})`,
-      backgroundClip: 'text',
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent'
-    },
-    notificationBtn: {
-      background: 'rgba(139, 92, 246, 0.2)',
-      border: `1px solid ${PURPLE_PRIMARY}30`,
-      borderRadius: '50%',
-      width: '44px',
-      height: '44px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      cursor: 'pointer',
-      position: 'relative',
-      transition: 'all 0.3s ease'
     },
 
     mainContent: {
-      // FIX 2: Add padding-top to compensate for the fixed header
-      paddingTop: HEADER_HEIGHT,
-      // FIX 3: Add padding-bottom to compensate for the fixed bottom navigation
-      paddingBottom: BOTTOM_NAV_HEIGHT,
+      paddingTop: isMobile ? '0.5rem' : '1rem', 
+      paddingBottom: '6rem', 
       paddingLeft: isMobile ? '1rem' : '2rem',
       paddingRight: isMobile ? '1rem' : '2rem',
       maxWidth: '800px',
       margin: '0 auto',
-      // Ensure content starts below header and doesn't get covered by bottom nav
+      minHeight: `calc(100vh - 2rem)` 
     },
 
     pageTitle: {
       fontSize: isMobile ? '1.8rem' : '2.2rem',
       fontWeight: '800',
-      color: TEXT_LIGHT,
+      color: TEXT_DARK,
       marginBottom: '0.5rem',
       textAlign: 'center',
-      background: 'linear-gradient(135deg, #FFFFFF 0%, #E2E8F0 100%)',
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
-      backgroundClip: 'text',
-      marginTop: '2rem' // Give space at the top of main content
+      marginTop: '1rem' 
     },
 
     pageSubtitle: {
@@ -387,8 +395,8 @@ function DepositPage() {
       marginBottom: '2.5rem',
       fontWeight: '400'
     },
-
-    // --- STEP INDICATOR STYLES (Unchanged) ---
+    
+    // --- STEP INDICATOR STYLES ---
     stepIndicator: {
         display: 'flex',
         justifyContent: 'space-between',
@@ -405,15 +413,13 @@ function DepositPage() {
         opacity: 0.5,
         transition: 'opacity 0.3s ease'
     },
-    stepItemActive: {
-        opacity: 1,
-    },
+    stepItemActive: { opacity: 1 },
     stepNumber: {
         width: '30px',
         height: '30px',
         borderRadius: '50%',
         background: TEXT_DARK_GRAY,
-        color: DARK_BG,
+        color: FORM_CARD_BG,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -423,9 +429,9 @@ function DepositPage() {
         transition: 'background 0.3s ease',
     },
     stepNumberActive: {
-        background: PURPLE_PRIMARY,
-        color: TEXT_LIGHT,
-        boxShadow: `0 0 0 4px ${PURPLE_PRIMARY}30`
+        background: GREEN_PRIMARY,
+        color: FORM_CARD_BG,
+        boxShadow: `0 0 0 4px ${GREEN_PRIMARY}30`
     },
     stepLine: {
         height: '2px',
@@ -435,30 +441,26 @@ function DepositPage() {
         alignSelf: 'center',
         transition: 'background 0.3s ease'
     },
-    stepLineCompleted: {
-        background: SUCCESS_GREEN
-    },
+    stepLineCompleted: { background: SUCCESS_GREEN },
     stepLabel: {
         fontSize: '11px', 
         color: TEXT_GRAY,
         marginTop: '0.5rem',
         fontWeight: '500'
     },
-    // --- END STEP INDICATOR STYLES ---
 
-    // Deposit Form Section (Unchanged)
     depositFormSection: {
       background: FORM_CARD_BG,
       borderRadius: '20px',
-      padding: '2rem',
-      border: `1px solid ${TEXT_DARK_GRAY}30`,
-      boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)',
+      padding: isMobile ? '1.5rem' : '2rem', 
+      border: `1px solid ${BORDER_COLOR}`,
+      boxShadow: '0 5px 20px rgba(0, 0, 0, 0.05)',
       animation: 'slideUp 0.6s ease-out'
     },
     
-    // --- SUCCESS SCREEN STYLE (Step 4) (Unchanged) ---
+    // --- SUCCESS SCREEN STYLE ---
     successCard: {
-      background: 'rgba(16, 185, 129, 0.15)',
+      background: 'rgba(16, 185, 129, 0.1)',
       border: `2px solid ${SUCCESS_GREEN}50`,
       borderRadius: '20px',
       padding: '3rem 2rem',
@@ -470,30 +472,14 @@ function DepositPage() {
       alignItems: 'center',
       gap: '1.5rem'
     },
-    successIcon: {
-        fontSize: '4rem',
-        color: SUCCESS_GREEN,
-        animation: 'bounce 1s infinite alternate'
-    },
-    successTitle: {
-        fontSize: '1.8rem',
-        fontWeight: '800',
-        color: SUCCESS_GREEN
-    },
-    successText: {
-        fontSize: '1.1rem',
-        color: TEXT_LIGHT,
-        lineHeight: '1.6',
-        maxWidth: '450px',
-        margin: '0 auto'
-    },
-    // --- END SUCCESS SCREEN STYLE ---
-
+    successIcon: { fontSize: '4rem', color: SUCCESS_GREEN, animation: 'bounce 1s infinite alternate' },
+    successTitle: { fontSize: '1.8rem', fontWeight: '800', color: SUCCESS_GREEN },
+    successText: { fontSize: '1.1rem', color: TEXT_DARK, lineHeight: '1.6', maxWidth: '450px', margin: '0 auto' },
 
     sectionTitle: {
       fontSize: '1.3rem',
       fontWeight: '700',
-      color: TEXT_LIGHT,
+      color: TEXT_DARK,
       marginBottom: '1.5rem',
       textAlign: 'center',
       display: 'flex',
@@ -502,7 +488,7 @@ function DepositPage() {
       gap: '0.5rem'
     },
 
-    // Amount Grid & Input (Unchanged)
+    // Amount Grid & Input
     amountGrid: {
       display: 'grid',
       gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)',
@@ -511,7 +497,7 @@ function DepositPage() {
     },
     amountButton: {
       background: INPUT_BG,
-      color: TEXT_LIGHT,
+      color: TEXT_DARK,
       border: `2px solid ${INPUT_BG}`,
       padding: '1.2rem 0.5rem',
       borderRadius: '12px',
@@ -522,52 +508,107 @@ function DepositPage() {
       textAlign: 'center'
     },
     amountButtonActive: {
-      background: 'rgba(139, 92, 246, 0.2)',
-      borderColor: PURPLE_PRIMARY,
-      boxShadow: `0 0 0 4px ${PURPLE_PRIMARY}20`
+      background: 'rgba(10, 82, 13, 0.1)', 
+      borderColor: GREEN_PRIMARY,
+      boxShadow: `0 0 0 4px ${GREEN_PRIMARY}20`
     },
     otherAmountInput: {
       padding: '1rem 1.2rem',
       borderRadius: '12px',
       fontSize: '0.95rem',
       background: INPUT_BG,
-      color: TEXT_LIGHT,
+      color: TEXT_DARK,
       border: `2px solid ${INPUT_BG}`,
       outline: 'none',
       transition: 'all 0.3s ease',
       fontFamily: 'inherit',
-      marginTop: '0.5rem'
+      marginTop: '0.5rem',
+      width: '100%', 
+      boxSizing: 'border-box'
     },
 
-    // Method Dropdown & Card (Unchanged)
-    methodDropdown: {
-        padding: '1rem 1.2rem',
-        borderRadius: '12px',
-        fontSize: '0.95rem',
-        background: INPUT_BG,
-        color: TEXT_LIGHT,
-        border: `2px solid ${INPUT_BG}`,
-        outline: 'none',
-        width: '100%',
-        boxSizing: 'border-box',
-        cursor: 'pointer',
+    // FIX 1: Custom Dropdown Styles for Mobile
+    customDropdownContainer: {
+      position: 'relative',
+      width: '100%'
     },
+    customDropdownButton: {
+      padding: '1rem 1.2rem',
+      borderRadius: '12px',
+      fontSize: '0.95rem',
+      background: INPUT_BG,
+      color: TEXT_DARK,
+      border: `2px solid ${INPUT_BG}`,
+      outline: 'none',
+      fontFamily: 'inherit',
+      width: '100%', 
+      boxSizing: 'border-box',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      cursor: 'pointer',
+      transition: 'all 0.3s ease',
+      minHeight: '48px',
+    },
+    customDropdownList: {
+      position: 'absolute',
+      top: '100%',
+      left: 0,
+      right: 0,
+      background: FORM_CARD_BG,
+      border: `1px solid ${BORDER_COLOR}`,
+      borderRadius: '12px',
+      boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+      zIndex: 1000,
+      marginTop: '5px',
+      maxHeight: '200px',
+      overflowY: 'auto'
+    },
+    customDropdownItem: {
+      padding: '1rem 1.2rem',
+      borderBottom: `1px solid ${BORDER_COLOR}`,
+      cursor: 'pointer',
+      transition: 'all 0.2s ease',
+      fontSize: '0.95rem',
+      color: TEXT_DARK
+    },
+    customDropdownItemHover: {
+      background: INPUT_BG,
+      color: GREEN_PRIMARY
+    },
+
+    // Method Card
     bankMethodCard: {
-        background: 'rgba(139, 92, 246, 0.1)',
-        border: `1px solid ${PURPLE_PRIMARY}30`,
+        background: 'rgba(10, 82, 13, 0.05)',
+        border: `1px solid ${GREEN_PRIMARY}30`,
         borderRadius: '16px',
         padding: '1.5rem',
         textAlign: 'center',
         marginTop: '1.5rem',
     },
-    methodIcon: { fontSize: '2.5rem', marginBottom: '0.5rem' },
-    methodName: { fontSize: '1.4rem', fontWeight: '700', color: PURPLE_LIGHT, marginBottom: '0.5rem' },
+    methodImageContainer: {
+        height: '80px', 
+        width: '100%', 
+        overflow: 'hidden', 
+        borderRadius: '8px', 
+        margin: '0 auto 1rem', 
+        backgroundColor: FORM_CARD_BG,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
+    methodImage: {
+        maxWidth: '100%',
+        maxHeight: '100%',
+        objectFit: 'contain'
+    },
+    methodName: { fontSize: '1.4rem', fontWeight: '700', color: GREEN_PRIMARY, marginBottom: '0.5rem' },
     methodDetail: { fontSize: '1rem', color: TEXT_GRAY, marginBottom: '0.75rem', fontWeight: '500' },
     methodNumber: {
         fontSize: '1.1rem',
-        color: TEXT_LIGHT,
+        color: TEXT_DARK,
         fontWeight: '700',
-        background: 'rgba(255, 255, 255, 0.1)',
+        background: INPUT_BG,
         padding: '0.75rem',
         borderRadius: '10px',
         marginTop: '1rem',
@@ -575,6 +616,7 @@ function DepositPage() {
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
+        border: `1px solid ${BORDER_COLOR}`
     },
     accountOwner: {
         background: 'rgba(16, 185, 129, 0.1)',
@@ -585,9 +627,9 @@ function DepositPage() {
     },
     ownerText: { color: SUCCESS_GREEN, fontWeight: '600', fontSize: '0.9rem' },
     copyBtn: {
-        background: 'rgba(255, 255, 255, 0.15)',
-        border: 'none',
-        color: TEXT_LIGHT,
+        background: 'rgba(10, 82, 13, 0.1)',
+        border: `1px solid ${GREEN_PRIMARY}50`,
+        color: GREEN_PRIMARY,
         fontSize: '14px',
         padding: '6px 10px',
         borderRadius: '8px',
@@ -597,25 +639,28 @@ function DepositPage() {
         transition: 'all 0.2s ease',
         display: 'inline-flex',
         alignItems: 'center',
-        gap: '5px'
+        gap: '5px',
+        flexShrink: 0,
     },
 
-    // Form Fields (Step 3) (Unchanged)
+    // Form Fields (Step 3) 
     form: { display: 'flex', flexDirection: 'column', gap: '1.5rem' },
     formGroup: { display: 'flex', flexDirection: 'column', gap: '0.5rem' },
-    label: { color: TEXT_LIGHT, fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.25rem' },
+    label: { color: TEXT_DARK, fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.25rem' },
     input: {
       padding: '1rem 1.2rem',
       borderRadius: '12px',
       fontSize: '0.95rem',
       background: INPUT_BG,
-      color: TEXT_LIGHT,
+      color: TEXT_DARK,
       border: `2px solid ${INPUT_BG}`,
       outline: 'none',
       transition: 'all 0.3s ease',
-      fontFamily: 'inherit'
+      fontFamily: 'inherit',
+      width: '100%', 
+      boxSizing: 'border-box'
     },
-    inputFocus: { borderColor: PURPLE_PRIMARY, background: INPUT_BG_FILLED, boxShadow: `0 0 0 3px ${PURPLE_PRIMARY}20` },
+    inputFocus: { borderColor: GREEN_PRIMARY, background: INPUT_BG_FILLED, boxShadow: `0 0 0 3px ${GREEN_PRIMARY}20` },
     fileInput: { display: 'none' },
     fileLabel: {
       padding: '1rem 1.2rem',
@@ -628,11 +673,11 @@ function DepositPage() {
       transition: 'all 0.3s ease',
       fontWeight: '500'
     },
-    fileLabelHover: { borderColor: PURPLE_PRIMARY, color: PURPLE_LIGHT, background: INPUT_BG_FILLED },
+    fileLabelHover: { borderColor: GREEN_PRIMARY, color: GREEN_PRIMARY, background: INPUT_BG_FILLED },
     previewContainer: { marginTop: '1rem', textAlign: 'center' },
-    previewImage: { maxWidth: '100%', maxHeight: '200px', borderRadius: '12px', border: `2px solid ${TEXT_DARK_GRAY}30` },
+    previewImage: { maxWidth: '100%', maxHeight: '200px', borderRadius: '12px', border: `2px solid ${BORDER_COLOR}` },
 
-    // Notes (Unchanged)
+    // Notes
     note: {
       background: 'rgba(245, 158, 11, 0.1)',
       border: `1px solid rgba(245, 158, 11, 0.3)`,
@@ -641,7 +686,7 @@ function DepositPage() {
       margin: '1.5rem 0'
     },
     noteTitle: {
-      color: '#F59E0B',
+      color: PENDING_ORANGE,
       fontSize: '1rem',
       fontWeight: '600',
       marginBottom: '0.5rem',
@@ -655,9 +700,9 @@ function DepositPage() {
       lineHeight: '1.5'
     },
 
-    // Buttons (Unchanged)
+    // Buttons
     actionBtn: {
-      background: `linear-gradient(135deg, ${PURPLE_PRIMARY} 0%, ${PURPLE_DARK} 100%)`,
+      background: `linear-gradient(135deg, ${GREEN_PRIMARY} 0%, ${GREEN_DARK} 100%)`,
       color: 'white',
       border: 'none',
       padding: '1.2rem 2rem',
@@ -671,7 +716,7 @@ function DepositPage() {
     },
     actionBtnHover: {
       transform: 'translateY(-2px)',
-      boxShadow: `0 8px 25px ${PURPLE_DARK}60`
+      boxShadow: `0 8px 25px ${GREEN_DARK}60`
     },
     actionBtnDisabled: {
       opacity: 0.6,
@@ -699,7 +744,7 @@ function DepositPage() {
         flexDirection: isMobile ? 'column' : 'row'
     },
 
-    // Messages (Unchanged)
+    // Messages
     message: {
       padding: '1rem',
       borderRadius: '12px',
@@ -718,85 +763,136 @@ function DepositPage() {
       border: `1px solid ${SUCCESS_GREEN}50`
     },
 
-    // Loading State (Unchanged)
-    loadingContainer: {
-      minHeight: '100vh',
-      background: DARK_BG,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexDirection: 'column',
-      gap: '20px'
+    // History Button
+    historyButton: {
+        background: FORM_CARD_BG,
+        color: GREEN_PRIMARY,
+        border: `1px solid ${GREEN_PRIMARY}50`,
+        padding: '1rem',
+        borderRadius: '12px',
+        fontSize: '1rem',
+        fontWeight: '700',
+        cursor: 'pointer',
+        width: isMobile ? '100%' : 'auto',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '0.5rem',
+        margin: '1.5rem auto 0',
+        maxWidth: '350px',
+        boxShadow: '0 4px 10px rgba(0, 0, 0, 0.05)',
+        transition: 'all 0.3s ease',
     },
-    spinner: {
-      width: '50px',
-      height: '50px',
-      border: `3px solid ${TEXT_DARK_GRAY}30`,
-      borderTop: `3px solid ${PURPLE_PRIMARY}`,
-      borderRadius: '50%',
-      animation: 'spin 1s linear infinite'
-    },
-     // Bottom Navigation (Unchanged, but Z-index ensured)
-    bottomNav: {
-      position: 'fixed',
-      bottom: '0',
-      left: '0',
-      right: '0',
-      height: BOTTOM_NAV_HEIGHT,
-      background: 'rgba(26, 27, 47, 0.95)',
-      backdropFilter: 'blur(25px)',
-      borderTop: `1px solid ${TEXT_DARK_GRAY}30`,
-      display: 'flex',
-      justifyContent: 'space-around',
-      alignItems: 'center',
-      padding: '12px 0',
-      boxShadow: '0 -8px 30px rgba(0, 0, 0, 0.3)',
-      zIndex: 1000 // Lower Z-index than header
-    },
+    
+    // FIX 2: Enhanced History Card Styles - Modern Design
+    historyCard: (status) => {
+        let color = BORDER_COLOR;
+        if (status === 'Approved') color = SUCCESS_GREEN;
+        else if (status === 'Pending') color = PENDING_ORANGE;
+        else if (status === 'Rejected') color = ERROR_RED;
 
-    navItem: {
-      textAlign: 'center',
-      cursor: 'pointer',
-      padding: '12px 14px',
-      borderRadius: '16px',
-      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-      flex: 1,
-      margin: '0 4px',
-      maxWidth: isMobile ? '70px' : '100px',
+        return {
+            background: `linear-gradient(135deg, ${FORM_CARD_BG} 0%, ${INPUT_BG} 100%)`,
+            borderRadius: '20px', 
+            padding: isMobile ? '1.5rem' : '1.8rem',
+            marginBottom: '1.2rem',
+            border: `1px solid ${BORDER_COLOR}`,
+            boxShadow: '0 8px 25px rgba(0,0,0,0.08)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem',
+            transition: 'all 0.3s ease',
+            position: 'relative',
+            overflow: 'hidden',
+            ':before': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '6px',
+                height: '100%',
+                background: color
+            }
+        };
     },
-
-    navItemActive: {
-      background: 'rgba(139, 92, 246, 0.2)',
-      border: `1px solid ${PURPLE_PRIMARY}40`,
-      transform: 'translateY(-6px)'
+    historyHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        gap: '1rem'
     },
-
-    navIcon: {
-      fontSize: '24px',
-      marginBottom: '6px',
-      transition: 'all 0.3s ease',
-      color: TEXT_GRAY,
+    historyAmount: {
+        fontSize: '1.5rem',
+        fontWeight: '800',
+        color: TEXT_DARK,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+        flex: 1
     },
-
-    navIconActive: {
-      transform: 'scale(1.15)',
-      color: PURPLE_PRIMARY,
+    historyStatusBadge: (status) => {
+        let color = TEXT_DARK_GRAY;
+        let background = INPUT_BG;
+        if (status === 'Approved') { color = SUCCESS_GREEN; background = 'rgba(16, 185, 129, 0.15)'; }
+        else if (status === 'Pending') { color = PENDING_ORANGE; background = 'rgba(245, 158, 11, 0.15)'; }
+        else if (status === 'Rejected') { color = ERROR_RED; background = 'rgba(239, 68, 68, 0.15)'; }
+        
+        return {
+            padding: '0.5rem 1rem',
+            borderRadius: '20px', 
+            fontWeight: '700',
+            fontSize: '0.75rem',
+            color: color,
+            background: background,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            lineHeight: 1,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px'
+        };
     },
-
-    navLabel: {
-      fontSize: '11px',
-      fontWeight: '500',
-      color: TEXT_GRAY,
-      transition: 'all 0.3s ease'
+    historyDetails: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.8rem',
+        padding: '0.5rem 0'
     },
-
-    navLabelActive: {
-      color: PURPLE_PRIMARY,
-      fontWeight: '700'
+    historyDetailRow: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.8rem',
+        fontSize: '0.9rem',
+        padding: '0.3rem 0'
     },
+    historyDetailLabel: {
+        fontWeight: '600',
+        color: TEXT_DARK,
+        minWidth: '70px',
+        fontSize: '0.85rem'
+    },
+    historyDetailValue: {
+        color: TEXT_GRAY,
+        flex: 1,
+        wordBreak: 'break-word'
+    },
+    historyFooter: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingTop: '0.8rem',
+        borderTop: `1px solid ${BORDER_COLOR}`,
+        fontSize: '0.8rem',
+        color: TEXT_DARK_GRAY
+    },
+    historyDateTime: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.5rem'
+    }
   };
 
-  // --- INLINE KEYFRAMES (Unchanged) ---
+  // --- INLINE KEYFRAMES ---
   const keyframesStyle = `
     @keyframes slideDown {
       from { transform: translateY(-30px); opacity: 0; }
@@ -820,18 +916,20 @@ function DepositPage() {
     }
     body {
         margin: 0;
-        background: ${DARK_BG};
+        background: ${BG_LIGHT};
+    }
+    .animate-spin {
+        animation: spin 1s linear infinite;
     }
   `;
 
-  // --- RENDER FUNCTIONS (Unchanged logic, relying on updated styles) ---
+  // --- RENDER FUNCTIONS ---
   const renderStep1 = () => (
     <div style={styles.depositFormSection}>
         <div style={styles.sectionTitle}>
-            <span>💵</span> Select Your Amount
+            <span><FaMoneyBillWave style={{color: GREEN_PRIMARY}} /></span> Select Your Amount
         </div>
         
-        {/* ... (Amount Selection HTML) ... */}
         <div style={styles.amountGrid}>
             {AMOUNT_OPTIONS.map(amount => (
                 <div
@@ -856,7 +954,7 @@ function DepositPage() {
             </div>
         </div>
 
-        {(!AMOUNT_OPTIONS.includes(Number(formData.amount))) && (
+        {(!AMOUNT_OPTIONS.includes(Number(formData.amount)) || (formData.amount === '' && AMOUNT_OPTIONS.includes(Number(formData.amount)) === false)) && (
             <div style={styles.formGroup}>
                 <label style={styles.label}>Enter Custom Amount (Min {MIN_AMOUNT} PKR)</label>
                 <input
@@ -891,73 +989,141 @@ function DepositPage() {
   );
 
   const renderStep2 = () => {
-    const selectedDetails = FIXED_BANK_DETAILS[formData.method] || null;
+    const selectedDetails = getMethodDetails(formData.method);
+    const isDetailsLoading = !accountDetails;
+    const IconComponent = formData.method ? getMethodDetails(formData.method)?.icon : FaCreditCard;
 
     return (
       <div style={styles.depositFormSection}>
         <div style={styles.sectionTitle}>
-            <span>💳</span> Select Payment Method & Pay
+            <span><FaLock style={{color: GREEN_PRIMARY}} /></span> Select Payment Method & Pay
         </div>
 
-        {/* Payment Method Dropdown */}
+        {/* FIX 1: Custom Dropdown for Mobile */}
         <div style={styles.formGroup}>
             <label style={styles.label}>Select Payment Method</label>
-            <select
-                name="method"
-                value={formData.method}
-                onChange={(e) => handleMethodSelect(e.target.value)}
-                style={styles.methodDropdown}
-            >
-                <option value="">Choose Method</option>
-                {METHOD_OPTIONS.map(method => (
-                    <option key={method} value={method}>{method}</option>
-                ))}
-            </select>
+            {isMobile ? (
+                <div style={styles.customDropdownContainer}>
+                    <button
+                        type="button"
+                        onClick={() => setShowMethodDropdown(!showMethodDropdown)}
+                        style={{
+                            ...styles.customDropdownButton,
+                            ...(focusedField === 'method' && styles.inputFocus)
+                        }}
+                        onFocus={() => handleFocus('method')}
+                        onBlur={handleBlur}
+                    >
+                        <span>{formData.method || 'Choose Method'}</span>
+                        <span>
+                            {showMethodDropdown ? <FaChevronUp /> : <FaChevronDown />}
+                        </span>
+                    </button>
+                    
+                    {showMethodDropdown && (
+                        <div style={styles.customDropdownList}>
+                            {METHOD_OPTIONS.map(method => (
+                                <div
+                                    key={method}
+                                    onClick={() => handleMethodSelect(method)}
+                                    style={{
+                                        ...styles.customDropdownItem,
+                                        ...(formData.method === method && styles.customDropdownItemHover)
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = INPUT_BG}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = FORM_CARD_BG}
+                                >
+                                    {method}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <select
+                    name="method"
+                    value={formData.method}
+                    onChange={(e) => handleMethodSelect(e.target.value)}
+                    style={{
+                        ...styles.customDropdownButton,
+                        ...(focusedField === 'method' && styles.inputFocus)
+                    }}
+                    disabled={isDetailsLoading}
+                    onFocus={() => handleFocus('method')}
+                    onBlur={handleBlur}
+                >
+                    <option value="">{isDetailsLoading ? 'Loading Methods...' : 'Choose Method'}</option>
+                    {!isDetailsLoading && METHOD_OPTIONS.map(method => (
+                        <option key={method} value={method}>{method}</option>
+                    ))}
+                </select>
+            )}
         </div>
 
         {/* Method Details Card */}
-        {selectedDetails && (
+        {formData.method && isDetailsLoading && (
+            <div style={{textAlign: 'center', marginTop: '1.5rem', color: TEXT_GRAY}}>
+                <FaSpinner className="animate-spin" style={{fontSize: '2rem', color: GREEN_PRIMARY}} />
+                <p>Fetching Account Details...</p>
+            </div>
+        )}
+        {selectedDetails && !isDetailsLoading && (
             <div style={styles.bankMethodCard}>
-                <div style={styles.methodIcon}>{selectedDetails.icon}</div>
-                <div style={styles.methodName}>{selectedDetails.name}</div>
+                
+                <div style={styles.methodImageContainer}>
+                    {!selectedDetails.image || selectedDetails.image === 'N/A' ? (
+                        <IconComponent style={{fontSize: '3rem', color: GREEN_PRIMARY}} />
+                    ) : (
+                        <img 
+                            src={selectedDetails.image} 
+                            alt={formData.method} 
+                            style={styles.methodImage} 
+                            onError={(e) => { e.target.style.display = 'none'; e.target.parentElement.innerHTML = React.createElement(IconComponent, { style: { fontSize: '3rem', color: GREEN_PRIMARY } }); }}
+                        />
+                    )}
+                </div>
+
+                <div style={styles.methodName}>{formData.method}</div>
                 <div style={styles.methodDetail}>{selectedDetails.detail}</div>
+                
                 <div style={styles.methodNumber}>
                     {selectedDetails.number}
                     <button
                         onClick={() => handleCopy(selectedDetails.number)}
                         style={styles.copyBtn}
                     >
-                        <span role="img" aria-label="copy">📋</span> Copy
+                        <FaCopy /> Copy
                     </button>
                 </div>
+                
                 <div style={styles.accountOwner}>
                     <div style={styles.ownerText}>
-                        Account Owner: **{FIXED_ACCOUNT_OWNER}**
+                        Account Owner: **{selectedDetails.owner}**
                     </div>
                 </div>
+
                 <div style={styles.note}>
-                    <div style={styles.noteTitle}>⚠️ Action Required: Pay Now</div>
+                    <div style={styles.noteTitle}><FaExclamationTriangle /> Action Required: Pay Now</div>
                     <div style={styles.noteText}>
                         Please **pay the amount** of **{parseFloat(formData.amount).toLocaleString('en-US')} PKR** to the details above *before* proceeding.
-                        You must save the **Transaction ID** and **Screenshot**.
+                        You must save the **Transaction ID** and **Screenshot** to submit in the next step.
                     </div>
                 </div>
             </div>
         )}
 
-        {/* Button Group */}
         <div style={styles.buttonGroup}>
             <button type="button" onClick={handleBack} style={styles.backBtn}>
-                Back
+                <FaChevronLeft /> Back
             </button>
             <button
                 type="button"
                 onClick={handleNext}
                 style={{
                     ...styles.actionBtn,
-                    ...((loading || !formData.method) && styles.actionBtnDisabled)
+                    ...((loading || !formData.method || isDetailsLoading) && styles.actionBtnDisabled)
                 }}
-                disabled={loading || !formData.method}
+                disabled={loading || !formData.method || isDetailsLoading}
             >
                 Next (Enter Proof)
             </button>
@@ -969,17 +1135,16 @@ function DepositPage() {
   const renderStep3 = () => (
     <div style={styles.depositFormSection}>
         <div style={styles.sectionTitle}>
-            <span>🧾</span> Finalize Details
+            <span><FaCheckCircle style={{color: GREEN_PRIMARY}} /></span> Finalize Details
         </div>
 
         <form onSubmit={handleSubmit} style={styles.form}>
-            {/* ... (Summary and Form fields HTML) ... */}
             <div style={styles.note}>
                 <div style={styles.noteTitle}> Deposit Summary</div>
                 <div style={styles.noteText}>
-                    **Amount:** <span style={{color: PURPLE_LIGHT, fontWeight: '700'}}>{parseFloat(formData.amount).toLocaleString('en-US')} PKR</span>
+                    **Amount:** <span style={{color: GREEN_PRIMARY, fontWeight: '700'}}>{parseFloat(formData.amount).toLocaleString('en-US')} PKR</span>
                     <br/>
-                    **Method:** <span style={{color: PURPLE_LIGHT, fontWeight: '700'}}>{formData.method}</span>
+                    **Method:** <span style={{color: GREEN_PRIMARY, fontWeight: '700'}}>{formData.method}</span>
                 </div>
             </div>
 
@@ -1006,7 +1171,7 @@ function DepositPage() {
                 value={formData.bank_name}
                 onChange={handleInputChange}
                 style={{...styles.input, ...(focusedField === 'bank_name' && styles.inputFocus)}}
-                placeholder="e.g., UBL, Meezan Bank, Personal JazzCash"
+                placeholder="e.g., UBL, Personal JazzCash"
                 onFocus={() => handleFocus('bank_name')}
                 onBlur={handleBlur}
                 required
@@ -1043,7 +1208,7 @@ function DepositPage() {
                 style={{
                     ...styles.fileLabel,
                     ...(hoveredFile && styles.fileLabelHover),
-                    ...(formData.screenshot && { borderColor: SUCCESS_GREEN, color: SUCCESS_GREEN })
+                    ...(formData.screenshot && { borderColor: SUCCESS_GREEN, color: SUCCESS_GREEN, background: 'rgba(16, 185, 129, 0.1)' })
                 }}
                 onMouseEnter={() => setHoveredFile(true)}
                 onMouseLeave={() => setHoveredFile(false)}
@@ -1060,14 +1225,14 @@ function DepositPage() {
 
             <div style={styles.buttonGroup}>
                 <button type="button" onClick={handleBack} style={styles.backBtn} disabled={loading}>
-                    Back
+                    <FaChevronLeft /> Back
                 </button>
                 <button
                   type="submit"
                   style={{...styles.actionBtn, ...(loading && styles.actionBtnDisabled)}}
                   disabled={loading || !formData.transaction_id || !formData.screenshot}
                 >
-                  {loading ? 'Submitting Request...' : 'Submit Deposit Request'}
+                  {loading ? <FaSpinner className="animate-spin" style={{marginRight: '0.5rem'}} /> : 'Submit Deposit Request'}
                 </button>
             </div>
         </form>
@@ -1093,11 +1258,94 @@ function DepositPage() {
                   onMouseOver={e => e.currentTarget.style.boxShadow = styles.actionBtnHover.boxShadow}
                   onMouseOut={e => e.currentTarget.style.boxShadow = 'none'}
               >
-                  Go Home
+                  <FaHome /> Go Home
               </button>
           </div>
       </div>
   );
+
+  // FIX 2: Enhanced History Render Function
+  const renderHistory = () => (
+    <div style={{paddingBottom: '2rem'}}>
+        <h2 style={{...styles.pageTitle, marginTop: '0'}}>Deposit History</h2>
+        <p style={styles.pageSubtitle}>Review all your past deposit requests and their status.</p>
+
+        <button 
+            onClick={() => handleNavigation('Deposit')} 
+            style={{...styles.backBtn, marginBottom: '1.5rem', width: isMobile ? '100%' : '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: isMobile ? '0 auto 1.5rem' : '0 auto 1.5rem'}}
+        >
+            <FaChevronLeft /> Back to Deposit
+        </button>
+
+        {loading ? (
+             <div style={{textAlign: 'center', padding: '3rem', color: TEXT_GRAY}}>
+                <FaSpinner className="animate-spin" style={{fontSize: '2rem', color: GREEN_PRIMARY}} />
+                <p>Loading Deposit History...</p>
+             </div>
+        ) : history.length === 0 ? (
+            <div style={{...styles.depositFormSection, textAlign: 'center', padding: '3rem'}}>
+                <FaHistory style={{fontSize: '3rem', color: TEXT_GRAY, marginBottom: '1rem'}} />
+                <p style={{color: TEXT_DARK}}>No deposit history found.</p>
+            </div>
+        ) : (
+            history.map((item) => {
+                const statusIcon = item.status === 'Approved' ? FaCheck : item.status === 'Pending' ? FaHourglassHalf : FaTimes;
+                const statusColor = item.status === 'Approved' ? SUCCESS_GREEN : item.status === 'Pending' ? PENDING_ORANGE : ERROR_RED;
+                const methodIconComponent = getMethodDetails(item.method)?.icon || FaCreditCard;
+
+                return (
+                <div key={item.id} style={styles.historyCard(item.status)}>
+                    
+                    {/* Header: Amount and Status */}
+                    <div style={styles.historyHeader}>
+                        <div style={styles.historyAmount}>
+                            <FaMoneyBillAlt style={{color: GREEN_PRIMARY, fontSize: '1.4rem'}} />
+                            PKR {parseFloat(item.amount).toLocaleString()}
+                        </div>
+                        <span style={styles.historyStatusBadge(item.status)}>
+                            {React.createElement(statusIcon, { style: { color: statusColor, fontSize: '0.8rem' } })}
+                            {item.status}
+                        </span>
+                    </div>
+
+                    {/* Details */}
+                    <div style={styles.historyDetails}>
+                        <div style={styles.historyDetailRow}>
+                            {React.createElement(methodIconComponent, { style: { fontSize: '1rem', color: GREEN_LIGHT } })}
+                            <span style={styles.historyDetailLabel}>Method:</span>
+                            <span style={styles.historyDetailValue}>{item.method}</span>
+                        </div>
+                        <div style={styles.historyDetailRow}>
+                            <FaReceipt style={{fontSize: '1rem', color: GREEN_LIGHT}} />
+                            <span style={styles.historyDetailLabel}>TXN ID:</span>
+                            <span style={styles.historyDetailValue}>{item.transaction_id}</span>
+                        </div>
+                        <div style={styles.historyDetailRow}>
+                            <FaUniversity style={{fontSize: '1rem', color: GREEN_LIGHT}} />
+                            <span style={styles.historyDetailLabel}>Bank:</span>
+                            <span style={styles.historyDetailValue}>{item.bank_name}</span>
+                        </div>
+                    </div>
+
+                    {/* Footer: Date and Time */}
+                    <div style={styles.historyFooter}>
+                        <div style={styles.historyDateTime}>
+                            <FaRegCalendarAlt style={{fontSize: '0.8rem'}} />
+                            <span>{new Date(item.created_at).toLocaleDateString()}</span>
+                        </div>
+                        <div style={styles.historyDateTime}>
+                            <FaClock style={{fontSize: '0.8rem'}} />
+                            <span>{new Date(item.created_at).toLocaleTimeString()}</span>
+                        </div>
+                    </div>
+
+                </div>
+            )}
+            )
+        )}
+    </div>
+  );
+
 
   const renderStepIndicator = () => {
     const stepsArray = [1, 2, 3];
@@ -1123,100 +1371,95 @@ function DepositPage() {
     );
   };
 
-  // --- MAIN RENDER LOGIC (Unchanged) ---
+
+  // --- MAIN RENDER LOGIC ---
   if (authLoading) {
     return (
-      <div style={styles.loadingContainer}>
-        <div style={styles.spinner}></div>
-        <div style={{color: TEXT_GRAY, fontSize: '16px', fontWeight: '500'}}>
-          Loading...
+      <div style={styles.container}>
+        <style>{keyframesStyle}</style>
+        <div style={{textAlign: 'center', paddingTop: '50vh', transform: 'translateY(-50%)'}}>
+            <FaSpinner className="animate-spin" style={{fontSize: '2rem', color: GREEN_PRIMARY}} />
+            <div style={{color: TEXT_GRAY, fontSize: '16px', fontWeight: '500', marginTop: '10px'}}>
+              Loading...
+            </div>
         </div>
       </div>
     );
   }
 
   let content;
+  let pageTitle;
   let subtitle;
 
-  if (step === 4) {
+  if (activeTab === 'History') {
+      content = renderHistory();
+      pageTitle = "Deposit History";
+      subtitle = "";
+  } else if (step === 4) {
       content = renderStep4();
+      pageTitle = "New Deposit Request";
       subtitle = 'Your request is complete!';
   } else {
       switch (step) {
           case 1:
             content = renderStep1();
+            pageTitle = "New Deposit Request";
             subtitle = 'How much do you want to invest?';
             break;
           case 2:
             content = renderStep2();
-            subtitle = `Complete your payment of PKR ${parseFloat(formData.amount).toLocaleString()}.`;
+            pageTitle = "New Deposit Request";
+            subtitle = `Complete your payment of PKR ${parseFloat(formData.amount || 0).toLocaleString()}.`;
             break;
           case 3:
             content = renderStep3();
+            pageTitle = "New Deposit Request";
             subtitle = 'Submit the transfer proof to finalize your deposit.';
             break;
           default:
             content = renderStep1();
+            pageTitle = "New Deposit Request";
             subtitle = 'How much do you want to invest?';
       }
   }
 
 
-  // --- FINAL RETURN ---
+  // --- FINAL RETURN: WRAPPED IN LAYOUT ---
   return (
-    // Note: The main container only sets the background/font, scrolling is handled by the browser's viewport.
-    <div style={styles.container}>
+    <Layout>
       <style>{keyframesStyle}</style>
-
-      {/* Header (Now fixed) */}
-      <header style={styles.header}>
-        <div style={styles.headerLeft}>
-          <p style={styles.welcomeText}>As-salamu alaykum,</p>
-          <h1 style={styles.userName}>{displayUserName}</h1>
-        </div>
-        <div style={styles.notificationBtn} onClick={handleLogout} title="Logout">
-          <span style={{fontSize: '20px'}}>🚪</span>
-        </div>
-      </header>
-
-      {/* Main Content (Padded to account for fixed header and footer) */}
-      <main style={styles.mainContent}>
-        <h2 style={styles.pageTitle}>New Deposit Request</h2>
+      
+      <main style={styles.mainContent}> 
+        <h2 style={styles.pageTitle}>{pageTitle}</h2>
         <p style={styles.pageSubtitle}>{subtitle}</p>
 
-        {step !== 4 && renderStepIndicator()}
-
+        {/* View History Button */}
+        {activeTab === 'Deposit' && (
+            <button 
+                onClick={() => handleNavigation('History')} 
+                style={styles.historyButton}
+                onMouseEnter={e => e.currentTarget.style.background = INPUT_BG}
+                onMouseLeave={e => e.currentTarget.style.background = FORM_CARD_BG}
+            >
+                <FaHistory /> View All Deposit History
+            </button>
+        )}
+        
+        {/* Messages */}
         {error && <div style={{ ...styles.message, ...styles.errorMessage }}>{error}</div>}
-        {message && !error && step !== 4 && <div style={{ ...styles.message, ...styles.successMessage }}>{message}</div>}
+        {message && !error && activeTab === 'Deposit' && step !== 4 && <div style={{ ...styles.message, ...styles.successMessage }}>{message}</div>}
+        {message && !error && activeTab === 'History' && !loading && <div style={{ ...styles.message, ...styles.successMessage }}>{message}</div>}
 
+
+        {/* Step Indicator */}
+        {activeTab === 'Deposit' && step !== 4 && renderStepIndicator()}
+
+        {/* Main Content (Steps or History) */}
         {content}
 
       </main>
 
-      {/* Bottom Navigation (Fixed) */}
-      <div style={styles.bottomNav}>
-        {[
-          { id: 'home', icon: '🏠', label: 'Home' },
-          { id: 'invest', icon: '💼', label: 'Invest' },
-          { id: 'Deposit', icon: '💰', label: 'Deposit' },
-          { id: 'profile', icon: '👤', label: 'Profile' }
-        ].map((nav) => (
-          <div
-            key={nav.id}
-            style={activeTab === nav.id ? {...styles.navItem, ...styles.navItemActive} : styles.navItem}
-            onClick={() => handleNavigation(nav.id)}
-          >
-            <div style={activeTab === nav.id ? styles.navIconActive : styles.navIcon}>
-              {nav.icon}
-            </div>
-            <div style={activeTab === nav.id ? styles.navLabelActive : styles.navLabel}>
-              {nav.label}
-            </div>
-          </div>
-        ))}
-      </div>
-
-    </div>
+    </Layout>
   );
 }
 
